@@ -38,6 +38,48 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534   # nobody (distroless)
+
+      # ── Init Container: aguarda o RDS e aplica o schema ──────────
+      initContainers:
+        - name: db-migrate
+          image: postgres:16-alpine
+          securityContext:
+            runAsUser: 70              # postgres user no alpine
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: donation-service-secrets
+                  key: database-url
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Aguardando banco de dados..."
+              until pg_isready --dbname="$DATABASE_URL" --timeout=5 2>/dev/null; do
+                echo "  RDS indisponivel, tentando em 5s..."
+                sleep 5
+              done
+              echo "Banco disponivel. Executando init.sql..."
+              psql "$DATABASE_URL" -f /migrations/init.sql
+              echo "Migration concluida com sucesso."
+          volumeMounts:
+            - name: db-init-sql
+              mountPath: /migrations
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+
       containers:
         - name: donation-service
           # ↓ GitHub Actions atualiza esta linha a cada build
@@ -98,3 +140,8 @@ spec:
             capabilities:
               drop:
                 - ALL
+
+      volumes:
+        - name: db-init-sql
+          configMap:
+            name: donation-db-init
