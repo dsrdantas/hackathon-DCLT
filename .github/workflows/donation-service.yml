@@ -39,8 +39,9 @@ env:
   ECR_REPO:      solidarytech-prod-donation-service
   SERVICE_DIR:   donation-service
   GITOPS_MANIFEST: gitops/donation-service/deployment.yaml
-  # Go 1.22+ corrige CVEs do stdlib presentes em 1.21 (x509, net/http, text/template)
-  GO_VERSION:    "1.22"
+  # Go 1.25 corrige todos os CVEs do stdlib encontrados pelo govulncheck
+  # (x509, net/http, text/template, crypto/tls, net/url, database/sql, etc.)
+  GO_VERSION:    "1.25"
   # Silencia o aviso de depreciação do Node.js 20 nas actions
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -94,25 +95,25 @@ jobs:
           # FIX: apontar para o go.sum correto (subdiretório donation-service/)
           cache-dependency-path: ${{ env.SERVICE_DIR }}/go.sum
 
-      - name: govulncheck — análise de vulnerabilidades em dependências Go
-        # Não bloqueia o pipeline; as descobertas são informativas
+      - name: govulncheck — vulnerabilidades em dependências Go (informativo)
+        # govulncheck reporta TODAS as vulnerabilidades, inclusive "Fixed in: N/A".
+        # Vulnerabilidades sem correção disponível (ex: pgproto3/v2) não podem
+        # ser resolvidas sem uma migração de biblioteca (pgx/v4 → v5), o que
+        # tornaria o pipeline permanentemente bloqueado.
+        # O gate real de CRITICAL/HIGH com fix disponível é o Trivy (passo abaixo).
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           cd ${{ env.SERVICE_DIR }}
           echo "=== govulncheck output ==="
-          govulncheck ./... 2>&1 || echo "⚠️ govulncheck encontrou findings (não bloqueante)"
+          govulncheck ./... 2>&1 || echo "⚠️ govulncheck findings acima (verifique Fixed in: N/A)"
 
-      - name: Trivy — scan no código-fonte e dependências Go
+      - name: Trivy — scan no código-fonte e dependências Go (bloqueante)
         uses: aquasecurity/trivy-action@master
         with:
           scan-type:      fs
           scan-ref:       ${{ env.SERVICE_DIR }}/
           format:         table
-          # exit-code "0": o scan de fonte é informativo.
-          # O gate de segurança real é o scan da imagem publicada (job build-push).
-          # Muitos findings de govulncheck sobre net/http e stdlib são false positives
-          # quando a versão do Go em uso já os mitiga no runtime.
-          exit-code:      "0"
+          exit-code:      "1"
           severity:       CRITICAL,HIGH
           ignore-unfixed: true
 
