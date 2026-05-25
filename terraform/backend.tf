@@ -17,10 +17,10 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "tc4-tm"
+    bucket         = "solidarytech-prod-tfstate"
     key            = "infra/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "tc4-terraform-lock"
+    dynamodb_table = "solidarytech-prod-terraform-lock"
     encrypt        = true
   }
 }
