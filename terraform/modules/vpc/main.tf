@@ -153,10 +153,46 @@ resource "aws_network_acl" "public" {
   tags       = { Name = "${local.name_prefix}-nacl-public" }
 }
 
-resource "aws_network_acl_rule" "public_in_http"      { network_acl_id = aws_network_acl.public.id; rule_number = 100; protocol = "tcp"; rule_action = "allow"; egress = false; cidr_block = "0.0.0.0/0"; from_port = 80;   to_port = 80 }
-resource "aws_network_acl_rule" "public_in_https"     { network_acl_id = aws_network_acl.public.id; rule_number = 110; protocol = "tcp"; rule_action = "allow"; egress = false; cidr_block = "0.0.0.0/0"; from_port = 443;  to_port = 443 }
-resource "aws_network_acl_rule" "public_in_ephemeral" { network_acl_id = aws_network_acl.public.id; rule_number = 120; protocol = "tcp"; rule_action = "allow"; egress = false; cidr_block = "0.0.0.0/0"; from_port = 1024; to_port = 65535 }
-resource "aws_network_acl_rule" "public_out_all"      { network_acl_id = aws_network_acl.public.id; rule_number = 100; protocol = "-1";  rule_action = "allow"; egress = true;  cidr_block = "0.0.0.0/0"; from_port = 0;    to_port = 0 }
+resource "aws_network_acl_rule" "public_in_http" {
+  network_acl_id = aws_network_acl.public.id
+  rule_number    = 100
+  protocol       = "tcp"
+  rule_action    = "allow"
+  egress         = false
+  cidr_block     = "0.0.0.0/0"
+  from_port      = 80
+  to_port        = 80
+}
+resource "aws_network_acl_rule" "public_in_https" {
+  network_acl_id = aws_network_acl.public.id
+  rule_number    = 110
+  protocol       = "tcp"
+  rule_action    = "allow"
+  egress         = false
+  cidr_block     = "0.0.0.0/0"
+  from_port      = 443
+  to_port        = 443
+}
+resource "aws_network_acl_rule" "public_in_ephemeral" {
+  network_acl_id = aws_network_acl.public.id
+  rule_number    = 120
+  protocol       = "tcp"
+  rule_action    = "allow"
+  egress         = false
+  cidr_block     = "0.0.0.0/0"
+  from_port      = 1024
+  to_port        = 65535
+}
+resource "aws_network_acl_rule" "public_out_all" {
+  network_acl_id = aws_network_acl.public.id
+  rule_number    = 100
+  protocol       = "-1"
+  rule_action    = "allow"
+  egress         = true
+  cidr_block     = "0.0.0.0/0"
+  from_port      = 0
+  to_port        = 0
+}
 
 # ── NACL EKS ──────────────────────────────────────────────────
 resource "aws_network_acl" "eks" {
@@ -165,9 +201,36 @@ resource "aws_network_acl" "eks" {
   tags       = { Name = "${local.name_prefix}-nacl-eks" }
 }
 
-resource "aws_network_acl_rule" "eks_in_vpc"       { network_acl_id = aws_network_acl.eks.id; rule_number = 100; protocol = "-1";  rule_action = "allow"; egress = false; cidr_block = var.vpc_cidr;   from_port = 0;    to_port = 0 }
-resource "aws_network_acl_rule" "eks_in_ephemeral"  { network_acl_id = aws_network_acl.eks.id; rule_number = 110; protocol = "tcp"; rule_action = "allow"; egress = false; cidr_block = "0.0.0.0/0"; from_port = 1024; to_port = 65535 }
-resource "aws_network_acl_rule" "eks_out_all"       { network_acl_id = aws_network_acl.eks.id; rule_number = 100; protocol = "-1";  rule_action = "allow"; egress = true;  cidr_block = "0.0.0.0/0"; from_port = 0;    to_port = 0 }
+resource "aws_network_acl_rule" "eks_in_vpc" {
+  network_acl_id = aws_network_acl.eks.id
+  rule_number    = 100
+  protocol       = "-1"
+  rule_action    = "allow"
+  egress         = false
+  cidr_block     = var.vpc_cidr
+  from_port      = 0
+  to_port        = 0
+}
+resource "aws_network_acl_rule" "eks_in_ephemeral" {
+  network_acl_id = aws_network_acl.eks.id
+  rule_number    = 110
+  protocol       = "tcp"
+  rule_action    = "allow"
+  egress         = false
+  cidr_block     = "0.0.0.0/0"
+  from_port      = 1024
+  to_port        = 65535
+}
+resource "aws_network_acl_rule" "eks_out_all" {
+  network_acl_id = aws_network_acl.eks.id
+  rule_number    = 100
+  protocol       = "-1"
+  rule_action    = "allow"
+  egress         = true
+  cidr_block     = "0.0.0.0/0"
+  from_port      = 0
+  to_port        = 0
+}
 
 # ── NACL RDS — subnet compartilhada por todos os bancos ───────
 resource "aws_network_acl" "rds" {
@@ -177,11 +240,38 @@ resource "aws_network_acl" "rds" {
 }
 
 # Inbound: somente PostgreSQL e efêmeras vindas da VPC (EKS)
-resource "aws_network_acl_rule" "rds_in_postgres"  { network_acl_id = aws_network_acl.rds.id; rule_number = 100; protocol = "tcp"; rule_action = "allow"; egress = false; cidr_block = var.vpc_cidr; from_port = 5432; to_port = 5432 }
-resource "aws_network_acl_rule" "rds_in_ephemeral"  { network_acl_id = aws_network_acl.rds.id; rule_number = 110; protocol = "tcp"; rule_action = "allow"; egress = false; cidr_block = var.vpc_cidr; from_port = 1024; to_port = 65535 }
+resource "aws_network_acl_rule" "rds_in_postgres" {
+  network_acl_id = aws_network_acl.rds.id
+  rule_number    = 100
+  protocol       = "tcp"
+  rule_action    = "allow"
+  egress         = false
+  cidr_block     = var.vpc_cidr
+  from_port      = 5432
+  to_port        = 5432
+}
+resource "aws_network_acl_rule" "rds_in_ephemeral" {
+  network_acl_id = aws_network_acl.rds.id
+  rule_number    = 110
+  protocol       = "tcp"
+  rule_action    = "allow"
+  egress         = false
+  cidr_block     = var.vpc_cidr
+  from_port      = 1024
+  to_port        = 65535
+}
 
 # Outbound: respostas TCP de volta para a VPC
-resource "aws_network_acl_rule" "rds_out_ephemeral" { network_acl_id = aws_network_acl.rds.id; rule_number = 100; protocol = "tcp"; rule_action = "allow"; egress = true; cidr_block = var.vpc_cidr; from_port = 1024; to_port = 65535 }
+resource "aws_network_acl_rule" "rds_out_ephemeral" {
+  network_acl_id = aws_network_acl.rds.id
+  rule_number    = 100
+  protocol       = "tcp"
+  rule_action    = "allow"
+  egress         = true
+  cidr_block     = var.vpc_cidr
+  from_port      = 1024
+  to_port        = 65535
+}
 
 # ── NACL ElastiCache ──────────────────────────────────────────
 resource "aws_network_acl" "elasticache" {
@@ -190,6 +280,33 @@ resource "aws_network_acl" "elasticache" {
   tags       = { Name = "${local.name_prefix}-nacl-elasticache" }
 }
 
-resource "aws_network_acl_rule" "ec_in_redis"      { network_acl_id = aws_network_acl.elasticache.id; rule_number = 100; protocol = "tcp"; rule_action = "allow"; egress = false; cidr_block = var.vpc_cidr; from_port = 6379; to_port = 6379 }
-resource "aws_network_acl_rule" "ec_in_ephemeral"  { network_acl_id = aws_network_acl.elasticache.id; rule_number = 110; protocol = "tcp"; rule_action = "allow"; egress = false; cidr_block = var.vpc_cidr; from_port = 1024; to_port = 65535 }
-resource "aws_network_acl_rule" "ec_out_ephemeral" { network_acl_id = aws_network_acl.elasticache.id; rule_number = 100; protocol = "tcp"; rule_action = "allow"; egress = true;  cidr_block = var.vpc_cidr; from_port = 1024; to_port = 65535 }
+resource "aws_network_acl_rule" "ec_in_redis" {
+  network_acl_id = aws_network_acl.elasticache.id
+  rule_number    = 100
+  protocol       = "tcp"
+  rule_action    = "allow"
+  egress         = false
+  cidr_block     = var.vpc_cidr
+  from_port      = 6379
+  to_port        = 6379
+}
+resource "aws_network_acl_rule" "ec_in_ephemeral" {
+  network_acl_id = aws_network_acl.elasticache.id
+  rule_number    = 110
+  protocol       = "tcp"
+  rule_action    = "allow"
+  egress         = false
+  cidr_block     = var.vpc_cidr
+  from_port      = 1024
+  to_port        = 65535
+}
+resource "aws_network_acl_rule" "ec_out_ephemeral" {
+  network_acl_id = aws_network_acl.elasticache.id
+  rule_number    = 100
+  protocol       = "tcp"
+  rule_action    = "allow"
+  egress         = true
+  cidr_block     = var.vpc_cidr
+  from_port      = 1024
+  to_port        = 65535
+}

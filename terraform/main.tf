@@ -1,7 +1,3 @@
-locals {
-  name_prefix = "${var.project_name}-${var.environment}"
-}
-
 # ── FinOps — Budgets, Alertas, Rightsizing ───────────────────
 module "finops" {
   source = "./modules/finops"

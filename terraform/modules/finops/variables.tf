@@ -1,8 +1,16 @@
-variable "project_name"   { type = string }
-variable "environment"    { type = string }
-variable "aws_region"     { type = string }
-variable "alert_email"    { type = string; description = "E-mail para receber alertas de custo" }
-variable "tags"           { type = map(string); default = {} }
+variable "project_name" { type = string }
+variable "environment"  { type = string }
+variable "aws_region"   { type = string }
+
+variable "alert_email" {
+  type        = string
+  description = "E-mail para receber alertas de custo"
+}
+
+variable "tags" {
+  type    = map(string)
+  default = {}
+}
 
 # ── Budgets ───────────────────────────────────────────────────
 variable "budget_monthly_total" {
