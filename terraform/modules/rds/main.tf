@@ -91,7 +91,7 @@ resource "aws_db_instance" "this" {
   password = var.password
 
   allocated_storage     = var.allocated_storage
-  max_allocated_storage = var.allocated_storage * 2   # storage autoscaling
+  max_allocated_storage = var.allocated_storage * 2 # storage autoscaling
   storage_type          = "gp3"
   storage_encrypted     = true
 
@@ -104,8 +104,8 @@ resource "aws_db_instance" "this" {
   backup_window           = "03:00-04:00"
   maintenance_window      = "Mon:04:00-Mon:05:00"
 
-  deletion_protection      = false   # true em produção real
-  skip_final_snapshot      = true    # false em produção real
+  deletion_protection      = false # true em produção real
+  skip_final_snapshot      = true  # false em produção real
   delete_automated_backups = true
 
   performance_insights_enabled = true

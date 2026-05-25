@@ -38,9 +38,9 @@ provider "aws" {
       Repository  = var.repository
 
       # FinOps / Faturamento
-      CostCenter  = var.cost_center
-      Team        = var.team
-      Owner       = var.owner_email
+      CostCenter = var.cost_center
+      Team       = var.team
+      Owner      = var.owner_email
     }
   }
 }

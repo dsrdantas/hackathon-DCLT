@@ -9,9 +9,9 @@ data "aws_region" "current" {}
 
 # ── Dead Letter Queue ─────────────────────────────────────────
 resource "aws_sqs_queue" "dlq" {
-  name                       = local.dlq_name
-  message_retention_seconds  = 1209600   # 14 dias (máximo)
-  kms_master_key_id          = "alias/aws/sqs"
+  name                      = local.dlq_name
+  message_retention_seconds = 1209600 # 14 dias (máximo)
+  kms_master_key_id         = "alias/aws/sqs"
 
   tags = { Name = local.dlq_name }
 }

@@ -22,11 +22,11 @@ locals {
   }
 
   # ── Tags por camada de infraestrutura ─────────────────────────
-  tags_network    = merge(local.base_tags, { Tier = "network",   Service = "vpc-networking" })
-  tags_compute    = merge(local.base_tags, { Tier = "compute",   Service = "eks-kubernetes" })
-  tags_data       = merge(local.base_tags, { Tier = "data",      Service = "rds-postgresql" })
-  tags_cache      = merge(local.base_tags, { Tier = "cache",     Service = "elasticache-redis" })
-  tags_messaging  = merge(local.base_tags, { Tier = "messaging", Service = "sqs-donations" })
-  tags_nosql      = merge(local.base_tags, { Tier = "data",      Service = "dynamodb-volunteers" })
-  tags_finops     = merge(local.base_tags, { Tier = "governance", Service = "finops-observability" })
+  tags_network   = merge(local.base_tags, { Tier = "network", Service = "vpc-networking" })
+  tags_compute   = merge(local.base_tags, { Tier = "compute", Service = "eks-kubernetes" })
+  tags_data      = merge(local.base_tags, { Tier = "data", Service = "rds-postgresql" })
+  tags_cache     = merge(local.base_tags, { Tier = "cache", Service = "elasticache-redis" })
+  tags_messaging = merge(local.base_tags, { Tier = "messaging", Service = "sqs-donations" })
+  tags_nosql     = merge(local.base_tags, { Tier = "data", Service = "dynamodb-volunteers" })
+  tags_finops    = merge(local.base_tags, { Tier = "governance", Service = "finops-observability" })
 }

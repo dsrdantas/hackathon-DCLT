@@ -2,11 +2,11 @@
 module "finops" {
   source = "./modules/finops"
 
-  project_name   = var.project_name
-  environment    = var.environment
-  aws_region     = var.aws_region
-  alert_email    = var.owner_email
-  tags           = local.tags_finops
+  project_name = var.project_name
+  environment  = var.environment
+  aws_region   = var.aws_region
+  alert_email  = var.owner_email
+  tags         = local.tags_finops
 
   budget_monthly_total    = var.budget_monthly_total
   budget_eks              = var.budget_eks
@@ -53,7 +53,7 @@ module "rds" {
 
   project_name      = var.project_name
   environment       = var.environment
-  service_name      = each.key               # "ngo" | "donation" | ...
+  service_name      = each.key # "ngo" | "donation" | ...
   vpc_id            = module.vpc.vpc_id
   subnet_ids        = module.vpc.rds_subnet_ids
   eks_sg_id         = module.eks.node_security_group_id
@@ -84,12 +84,12 @@ module "elasticache" {
 module "sqs" {
   source = "./modules/sqs"
 
-  project_name                   = var.project_name
-  environment                    = var.environment
-  queue_name                     = var.sqs_queue_name
-  eks_node_role_arn              = module.eks.node_role_arn
-  message_retention_seconds      = var.sqs_message_retention_seconds
-  visibility_timeout_seconds     = var.sqs_visibility_timeout_seconds
+  project_name               = var.project_name
+  environment                = var.environment
+  queue_name                 = var.sqs_queue_name
+  eks_node_role_arn          = module.eks.node_role_arn
+  message_retention_seconds  = var.sqs_message_retention_seconds
+  visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
 }
 
 # ── DynamoDB ──────────────────────────────────────────────────
@@ -134,12 +134,12 @@ module "secrets" {
 module "gitops" {
   source = "./modules/gitops"
 
-  project_name          = var.project_name
-  environment           = var.environment
-  aws_region            = var.aws_region
-  cluster_name          = module.eks.cluster_name
-  gitops_repo_url       = var.gitops_repo_url
-  gitops_repo_branch    = var.gitops_repo_branch
+  project_name                        = var.project_name
+  environment                         = var.environment
+  aws_region                          = var.aws_region
+  cluster_name                        = module.eks.cluster_name
+  gitops_repo_url                     = var.gitops_repo_url
+  gitops_repo_branch                  = var.gitops_repo_branch
   argocd_chart_version                = var.argocd_chart_version
   traefik_chart_version               = var.traefik_chart_version
   reloader_chart_version              = var.reloader_chart_version

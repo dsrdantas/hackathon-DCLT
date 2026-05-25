@@ -59,7 +59,7 @@ resource "aws_elasticache_replication_group" "this" {
   security_group_ids = [aws_security_group.elasticache.id]
 
   at_rest_encryption_enabled = true
-  transit_encryption_enabled = false   # true requer AUTH token; habilitar em produção
+  transit_encryption_enabled = false # true requer AUTH token; habilitar em produção
 
   automatic_failover_enabled = var.num_cache_nodes > 1 ? true : false
   multi_az_enabled           = var.num_cache_nodes > 1 ? true : false

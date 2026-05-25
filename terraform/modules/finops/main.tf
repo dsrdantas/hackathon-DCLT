@@ -19,18 +19,18 @@ resource "aws_sns_topic_policy" "cost_alerts" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "AllowBudgetsPublish"
-        Effect = "Allow"
+        Sid       = "AllowBudgetsPublish"
+        Effect    = "Allow"
         Principal = { Service = "budgets.amazonaws.com" }
-        Action   = "SNS:Publish"
-        Resource = aws_sns_topic.cost_alerts.arn
+        Action    = "SNS:Publish"
+        Resource  = aws_sns_topic.cost_alerts.arn
       },
       {
-        Sid    = "AllowAnomalyDetectionPublish"
-        Effect = "Allow"
+        Sid       = "AllowAnomalyDetectionPublish"
+        Effect    = "Allow"
         Principal = { Service = "costalerts.amazonaws.com" }
-        Action   = "SNS:Publish"
-        Resource = aws_sns_topic.cost_alerts.arn
+        Action    = "SNS:Publish"
+        Resource  = aws_sns_topic.cost_alerts.arn
       }
     ]
   })
@@ -52,11 +52,11 @@ locals {
   # Notificações ACTUAL para cada threshold + 1 FORECASTED no último
   actual_notifications = [
     for t in var.budget_alert_thresholds : {
-      comparison_operator       = "GREATER_THAN"
-      threshold                 = t
-      threshold_type            = "PERCENTAGE"
-      notification_type         = "ACTUAL"
-      subscriber_sns_topic_arns = [aws_sns_topic.cost_alerts.arn]
+      comparison_operator        = "GREATER_THAN"
+      threshold                  = t
+      threshold_type             = "PERCENTAGE"
+      notification_type          = "ACTUAL"
+      subscriber_sns_topic_arns  = [aws_sns_topic.cost_alerts.arn]
       subscriber_email_addresses = []
     }
   ]
@@ -64,32 +64,32 @@ locals {
 
 # ── Budget 1: Custo total mensal do projeto ───────────────────
 resource "aws_budgets_budget" "total" {
-  name         = "${local.name_prefix}-total-mensal"
-  budget_type  = "COST"
-  limit_amount = tostring(var.budget_monthly_total)
-  limit_unit   = "USD"
-  time_unit    = "MONTHLY"
+  name              = "${local.name_prefix}-total-mensal"
+  budget_type       = "COST"
+  limit_amount      = tostring(var.budget_monthly_total)
+  limit_unit        = "USD"
+  time_unit         = "MONTHLY"
   time_period_start = local.budget_start_date
 
   # Alerta ACTUAL em cada threshold configurado
   dynamic "notification" {
     for_each = var.budget_alert_thresholds
     content {
-      comparison_operator        = "GREATER_THAN"
-      threshold                  = notification.value
-      threshold_type             = "PERCENTAGE"
-      notification_type          = "ACTUAL"
-      subscriber_sns_topic_arns  = [aws_sns_topic.cost_alerts.arn]
+      comparison_operator       = "GREATER_THAN"
+      threshold                 = notification.value
+      threshold_type            = "PERCENTAGE"
+      notification_type         = "ACTUAL"
+      subscriber_sns_topic_arns = [aws_sns_topic.cost_alerts.arn]
     }
   }
 
   # Alerta FORECASTED — avisa antes de estourar
   notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                  = 100
-    threshold_type             = "PERCENTAGE"
-    notification_type          = "FORECASTED"
-    subscriber_sns_topic_arns  = [aws_sns_topic.cost_alerts.arn]
+    comparison_operator       = "GREATER_THAN"
+    threshold                 = 100
+    threshold_type            = "PERCENTAGE"
+    notification_type         = "FORECASTED"
+    subscriber_sns_topic_arns = [aws_sns_topic.cost_alerts.arn]
   }
 
   tags = var.tags
@@ -97,11 +97,11 @@ resource "aws_budgets_budget" "total" {
 
 # ── Budget 2: Camada Compute (EKS) — filtrado por tag Tier ───
 resource "aws_budgets_budget" "compute" {
-  name         = "${local.name_prefix}-compute-eks"
-  budget_type  = "COST"
-  limit_amount = tostring(var.budget_eks)
-  limit_unit   = "USD"
-  time_unit    = "MONTHLY"
+  name              = "${local.name_prefix}-compute-eks"
+  budget_type       = "COST"
+  limit_amount      = tostring(var.budget_eks)
+  limit_unit        = "USD"
+  time_unit         = "MONTHLY"
   time_period_start = local.budget_start_date
 
   # Filtra gastos de recursos com tag Tier=compute
@@ -114,20 +114,20 @@ resource "aws_budgets_budget" "compute" {
   dynamic "notification" {
     for_each = var.budget_alert_thresholds
     content {
-      comparison_operator        = "GREATER_THAN"
-      threshold                  = notification.value
-      threshold_type             = "PERCENTAGE"
-      notification_type          = "ACTUAL"
-      subscriber_sns_topic_arns  = [aws_sns_topic.cost_alerts.arn]
+      comparison_operator       = "GREATER_THAN"
+      threshold                 = notification.value
+      threshold_type            = "PERCENTAGE"
+      notification_type         = "ACTUAL"
+      subscriber_sns_topic_arns = [aws_sns_topic.cost_alerts.arn]
     }
   }
 
   notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                  = 100
-    threshold_type             = "PERCENTAGE"
-    notification_type          = "FORECASTED"
-    subscriber_sns_topic_arns  = [aws_sns_topic.cost_alerts.arn]
+    comparison_operator       = "GREATER_THAN"
+    threshold                 = 100
+    threshold_type            = "PERCENTAGE"
+    notification_type         = "FORECASTED"
+    subscriber_sns_topic_arns = [aws_sns_topic.cost_alerts.arn]
   }
 
   tags = var.tags
@@ -135,11 +135,11 @@ resource "aws_budgets_budget" "compute" {
 
 # ── Budget 3: Camada Data (RDS + ElastiCache) ────────────────
 resource "aws_budgets_budget" "data" {
-  name         = "${local.name_prefix}-data-rds-cache"
-  budget_type  = "COST"
-  limit_amount = tostring(var.budget_data)
-  limit_unit   = "USD"
-  time_unit    = "MONTHLY"
+  name              = "${local.name_prefix}-data-rds-cache"
+  budget_type       = "COST"
+  limit_amount      = tostring(var.budget_data)
+  limit_unit        = "USD"
+  time_unit         = "MONTHLY"
   time_period_start = local.budget_start_date
 
   cost_filter {
@@ -150,20 +150,20 @@ resource "aws_budgets_budget" "data" {
   dynamic "notification" {
     for_each = var.budget_alert_thresholds
     content {
-      comparison_operator        = "GREATER_THAN"
-      threshold                  = notification.value
-      threshold_type             = "PERCENTAGE"
-      notification_type          = "ACTUAL"
-      subscriber_sns_topic_arns  = [aws_sns_topic.cost_alerts.arn]
+      comparison_operator       = "GREATER_THAN"
+      threshold                 = notification.value
+      threshold_type            = "PERCENTAGE"
+      notification_type         = "ACTUAL"
+      subscriber_sns_topic_arns = [aws_sns_topic.cost_alerts.arn]
     }
   }
 
   notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                  = 100
-    threshold_type             = "PERCENTAGE"
-    notification_type          = "FORECASTED"
-    subscriber_sns_topic_arns  = [aws_sns_topic.cost_alerts.arn]
+    comparison_operator       = "GREATER_THAN"
+    threshold                 = 100
+    threshold_type            = "PERCENTAGE"
+    notification_type         = "FORECASTED"
+    subscriber_sns_topic_arns = [aws_sns_topic.cost_alerts.arn]
   }
 
   tags = var.tags
@@ -171,11 +171,11 @@ resource "aws_budgets_budget" "data" {
 
 # ── Budget 4: Camada Messaging (SQS + DynamoDB) ──────────────
 resource "aws_budgets_budget" "messaging" {
-  name         = "${local.name_prefix}-messaging-sqs-dynamo"
-  budget_type  = "COST"
-  limit_amount = tostring(var.budget_messaging)
-  limit_unit   = "USD"
-  time_unit    = "MONTHLY"
+  name              = "${local.name_prefix}-messaging-sqs-dynamo"
+  budget_type       = "COST"
+  limit_amount      = tostring(var.budget_messaging)
+  limit_unit        = "USD"
+  time_unit         = "MONTHLY"
   time_period_start = local.budget_start_date
 
   cost_filter {
@@ -186,11 +186,11 @@ resource "aws_budgets_budget" "messaging" {
   dynamic "notification" {
     for_each = var.budget_alert_thresholds
     content {
-      comparison_operator        = "GREATER_THAN"
-      threshold                  = notification.value
-      threshold_type             = "PERCENTAGE"
-      notification_type          = "ACTUAL"
-      subscriber_sns_topic_arns  = [aws_sns_topic.cost_alerts.arn]
+      comparison_operator       = "GREATER_THAN"
+      threshold                 = notification.value
+      threshold_type            = "PERCENTAGE"
+      notification_type         = "ACTUAL"
+      subscriber_sns_topic_arns = [aws_sns_topic.cost_alerts.arn]
     }
   }
 

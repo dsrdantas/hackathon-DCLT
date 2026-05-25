@@ -227,12 +227,12 @@ resource "aws_eks_node_group" "this" {
   ]
 
   tags = {
-    Name                                                  = "${local.cluster_name}-nodes"
-    Tier                                                  = "compute"
-    Service                                               = "eks-kubernetes"
+    Name    = "${local.cluster_name}-nodes"
+    Tier    = "compute"
+    Service = "eks-kubernetes"
     # Tags obrigatórias para o Cluster Autoscaler descobrir o node group
-    "k8s.io/cluster-autoscaler/enabled"                   = "true"
-    "k8s.io/cluster-autoscaler/${local.cluster_name}"     = "owned"
+    "k8s.io/cluster-autoscaler/enabled"               = "true"
+    "k8s.io/cluster-autoscaler/${local.cluster_name}" = "owned"
   }
 }
 
@@ -243,7 +243,7 @@ resource "aws_launch_template" "nodes" {
 
   metadata_options {
     http_endpoint               = "enabled"
-    http_tokens                 = "required"   # IMDSv2
+    http_tokens                 = "required" # IMDSv2
     http_put_response_hop_limit = 2
   }
 
