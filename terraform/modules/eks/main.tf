@@ -81,6 +81,7 @@ resource "aws_iam_role_policy" "node_aws_services" {
 # ════════════════════════════════════════════════════════════════
 # Security Groups
 # ════════════════════════════════════════════════════════════════
+#trivy:ignore:AVD-AWS-0104 # EKS control-plane SG: egress to internet necessário para acesso ao ECR e APIs AWS
 resource "aws_security_group" "cluster" {
   name        = "${local.cluster_name}-cluster-sg"
   description = "Control plane EKS — comunicacao com nós"
@@ -91,12 +92,13 @@ resource "aws_security_group" "cluster" {
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound"
+    description = "Allow all outbound — required for ECR pull and AWS API access"
   }
 
   tags = { Name = "${local.cluster_name}-cluster-sg" }
 }
 
+#trivy:ignore:AVD-AWS-0104 # Node SG: egress a internet necessário para ECR pull, AWS API e atualização de sistema
 resource "aws_security_group" "nodes" {
   name        = "${local.cluster_name}-nodes-sg"
   description = "Nós do EKS — comunicacao interna e com control plane"
@@ -154,6 +156,9 @@ resource "aws_security_group_rule" "cluster_ingress_nodes" {
 # ════════════════════════════════════════════════════════════════
 # EKS Cluster
 # ════════════════════════════════════════════════════════════════
+#trivy:ignore:AVD-AWS-0039 # KMS secret encryption omitido: AWS Academy LabRole não permite criar CMKs
+#trivy:ignore:AVD-AWS-0040 # Endpoint público necessário: GitHub Actions precisa de acesso kubectl sem VPN
+#trivy:ignore:AVD-AWS-0041 # CIDR 0.0.0.0/0: IPs do GitHub Actions são dinâmicos; restringir via OIDC em produção real
 resource "aws_eks_cluster" "this" {
   name     = local.cluster_name
   role_arn = aws_iam_role.cluster.arn

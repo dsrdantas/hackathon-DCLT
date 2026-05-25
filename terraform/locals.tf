@@ -8,8 +8,6 @@
 # ════════════════════════════════════════════════════════════════
 
 locals {
-  name_prefix = "${var.project_name}-${var.environment}"
-
   # ── Tags base (replicadas por camada de serviço) ─────────────
   base_tags = {
     Project     = var.project_name
@@ -21,12 +19,11 @@ locals {
     ManagedBy   = "Terraform"
   }
 
-  # ── Tags por camada de infraestrutura ─────────────────────────
-  tags_network   = merge(local.base_tags, { Tier = "network", Service = "vpc-networking" })
-  tags_compute   = merge(local.base_tags, { Tier = "compute", Service = "eks-kubernetes" })
-  tags_data      = merge(local.base_tags, { Tier = "data", Service = "rds-postgresql" })
-  tags_cache     = merge(local.base_tags, { Tier = "cache", Service = "elasticache-redis" })
-  tags_messaging = merge(local.base_tags, { Tier = "messaging", Service = "sqs-donations" })
-  tags_nosql     = merge(local.base_tags, { Tier = "data", Service = "dynamodb-volunteers" })
-  tags_finops    = merge(local.base_tags, { Tier = "governance", Service = "finops-observability" })
+  # ── Tags usadas pelos módulos que aceitam tags via input ──────
+  # VPC, ElastiCache, SQS e DynamoDB usam tags inline nos recursos;
+  # estes locals estão disponíveis para passagem futura quando os
+  # módulos forem refatorados para aceitar var.tags.
+  tags_compute = merge(local.base_tags, { Tier = "compute", Service = "eks-kubernetes" })
+  tags_data    = merge(local.base_tags, { Tier = "data", Service = "rds-postgresql" })
+  tags_finops  = merge(local.base_tags, { Tier = "governance", Service = "finops-observability" })
 }

@@ -175,7 +175,6 @@ jobs:
             TARGETARCH=amd64
           tags: |
             ${{ steps.meta.outputs.uri }}:${{ steps.meta.outputs.tag }}
-            ${{ steps.meta.outputs.uri }}:latest
           cache-from: type=gha
           cache-to:   type=gha,mode=max
 

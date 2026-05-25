@@ -4,10 +4,8 @@ locals {
   dlq_name    = "${local.name_prefix}-${var.queue_name}-dlq"
 }
 
-data "aws_caller_identity" "current" {}
-data "aws_region" "current" {}
-
 # ── Dead Letter Queue ─────────────────────────────────────────
+#trivy:ignore:AVD-AWS-0135 # AWS managed key (alias/aws/sqs) suficiente para hackathon; CMK omitido pois AWS Academy LabRole não cria KMS CMKs
 resource "aws_sqs_queue" "dlq" {
   name                      = local.dlq_name
   message_retention_seconds = 1209600 # 14 dias (máximo)
@@ -17,6 +15,7 @@ resource "aws_sqs_queue" "dlq" {
 }
 
 # ── Fila principal ────────────────────────────────────────────
+#trivy:ignore:AVD-AWS-0135 # AWS managed key (alias/aws/sqs) suficiente para hackathon; CMK omitido pois AWS Academy LabRole não cria KMS CMKs
 resource "aws_sqs_queue" "this" {
   name                       = local.queue_name
   message_retention_seconds  = var.message_retention_seconds

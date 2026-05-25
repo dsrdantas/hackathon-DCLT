@@ -20,7 +20,7 @@ locals {
 resource "aws_ecr_repository" "services" {
   for_each             = toset(var.services)
   name                 = "${local.name_prefix}-${each.key}"
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE" # Tags versionadas (run-sha); :latest removido dos workflows
 
   image_scanning_configuration {
     scan_on_push = true

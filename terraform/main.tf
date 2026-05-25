@@ -4,7 +4,6 @@ module "finops" {
 
   project_name = var.project_name
   environment  = var.environment
-  aws_region   = var.aws_region
   alert_email  = var.owner_email
   tags         = local.tags_finops
 

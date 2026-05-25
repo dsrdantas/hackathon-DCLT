@@ -19,6 +19,7 @@ resource "aws_internet_gateway" "this" {
 }
 
 # ── Subnets públicas (NAT Gateway + Load Balancers) ──────────
+#trivy:ignore:AVD-AWS-0164 # Subnets públicas precisam de IP público para Load Balancers e NAT Gateway
 resource "aws_subnet" "public" {
   count                   = length(var.public_subnet_cidrs)
   vpc_id                  = aws_vpc.this.id
@@ -183,6 +184,7 @@ resource "aws_network_acl_rule" "public_in_ephemeral" {
   from_port      = 1024
   to_port        = 65535
 }
+#trivy:ignore:AVD-AWS-0102 # NACL público: egress amplo necessário para resposta a clientes HTTP/S e tráfego de saída do NAT
 resource "aws_network_acl_rule" "public_out_all" {
   network_acl_id = aws_network_acl.public.id
   rule_number    = 100
@@ -201,6 +203,7 @@ resource "aws_network_acl" "eks" {
   tags       = { Name = "${local.name_prefix}-nacl-eks" }
 }
 
+#trivy:ignore:AVD-AWS-0102 # NACL EKS inbound: protocolo -1 necessário para comunicação intra-VPC (todos os protocolos Kubernetes)
 resource "aws_network_acl_rule" "eks_in_vpc" {
   network_acl_id = aws_network_acl.eks.id
   rule_number    = 100
@@ -221,6 +224,7 @@ resource "aws_network_acl_rule" "eks_in_ephemeral" {
   from_port      = 1024
   to_port        = 65535
 }
+#trivy:ignore:AVD-AWS-0102 # NACL EKS outbound: protocolo -1 necessário para ECR pull, AWS APIs e comunicação intra-cluster
 resource "aws_network_acl_rule" "eks_out_all" {
   network_acl_id = aws_network_acl.eks.id
   rule_number    = 100

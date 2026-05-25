@@ -5,6 +5,7 @@ locals {
 }
 
 # ── Security Group ─────────────────────────────────────────────
+#trivy:ignore:AVD-AWS-0104 # ElastiCache SG: egress amplo necessário para respostas TCP; restringir ao VPC CIDR em produção real
 resource "aws_security_group" "elasticache" {
   name        = "${local.name_prefix}-elasticache-sg"
   description = "ElastiCache Redis — acesso restrito aos nós EKS"
@@ -59,7 +60,7 @@ resource "aws_elasticache_replication_group" "this" {
   security_group_ids = [aws_security_group.elasticache.id]
 
   at_rest_encryption_enabled = true
-  transit_encryption_enabled = false # true requer AUTH token; habilitar em produção
+  transit_encryption_enabled = false #trivy:ignore:AVD-AWS-0051 — AUTH token necessário com TLS; Redis não utilizado pelos microserviços neste hackathon
 
   automatic_failover_enabled = var.num_cache_nodes > 1 ? true : false
   multi_az_enabled           = var.num_cache_nodes > 1 ? true : false

@@ -6,6 +6,7 @@ locals {
 # ════════════════════════════════════════════════════════════════
 # SNS — Canal de notificações de custo
 # ════════════════════════════════════════════════════════════════
+#trivy:ignore:AVD-AWS-0095 # SNS de alertas de custo: dados não sensíveis; CMK omitido pois AWS Academy LabRole não permite criar KMS keys
 resource "aws_sns_topic" "cost_alerts" {
   name = "${local.name_prefix}-cost-alerts"
   tags = merge(var.tags, { Name = "${local.name_prefix}-cost-alerts" })
@@ -46,21 +47,6 @@ resource "aws_sns_topic_subscription" "email" {
 # ════════════════════════════════════════════════════════════════
 # AWS Budgets — Orçamentos por camada
 # ════════════════════════════════════════════════════════════════
-
-# ── Helper local: gera blocos de notification dinamicamente ──
-locals {
-  # Notificações ACTUAL para cada threshold + 1 FORECASTED no último
-  actual_notifications = [
-    for t in var.budget_alert_thresholds : {
-      comparison_operator        = "GREATER_THAN"
-      threshold                  = t
-      threshold_type             = "PERCENTAGE"
-      notification_type          = "ACTUAL"
-      subscriber_sns_topic_arns  = [aws_sns_topic.cost_alerts.arn]
-      subscriber_email_addresses = []
-    }
-  ]
-}
 
 # ── Budget 1: Custo total mensal do projeto ───────────────────
 resource "aws_budgets_budget" "total" {
