@@ -80,7 +80,9 @@ def setup_telemetry(service_name: str) -> None:
     # Auto-instrumentação
     LoggingInstrumentor().instrument(set_logging_format=True)
     FlaskInstrumentor().instrument()
-    Psycopg2Instrumentor().instrument(enable_commenter=True)
+    # skip_dep_check=True: psycopg2-binary fornece o módulo mas tem nome PyPI
+    # diferente de "psycopg2"; o instrumentor encontra o módulo corretamente em runtime.
+    Psycopg2Instrumentor().instrument(enable_commenter=True, skip_dep_check=True)
 
 
 # ── Inicialização ─────────────────────────────────────────────
