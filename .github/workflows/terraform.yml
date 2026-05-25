@@ -162,15 +162,41 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init
 
+      - name: Detect EKS bootstrap mode
+        id: eks
+        run: |
+          # Se o cluster nao existe ainda, os providers Helm/K8s nao conseguem
+          # inicializar (data.aws_eks_cluster falha). Nesse caso fazemos plan
+          # somente do modulo EKS (primeiro deploy).
+          if aws eks describe-cluster \
+               --name solidarytech-prod-eks \
+               --region ${{ env.AWS_REGION }} \
+               --query "cluster.status" --output text 2>/dev/null | grep -qE "ACTIVE|UPDATING"; then
+            echo "bootstrap=false" >> $GITHUB_OUTPUT
+            echo "EKS cluster encontrado — plan completo"
+          else
+            echo "bootstrap=true" >> $GITHUB_OUTPUT
+            echo "EKS cluster nao encontrado — plan somente module.eks (primeiro deploy)"
+          fi
+
       - name: terraform plan
         id: plan
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           set -o pipefail
-          terraform plan \
-            -var="rds_password=${{ secrets.RDS_PASSWORD }}" \
-            -out=tfplan \
-            -no-color 2>&1 | tee plan-output.txt
+          if [ "${{ steps.eks.outputs.bootstrap }}" = "true" ]; then
+            # Primeiro deploy: planeja apenas o EKS para nao depender dos providers K8s/Helm
+            terraform plan \
+              -target=module.eks \
+              -var="rds_password=${{ secrets.RDS_PASSWORD }}" \
+              -out=tfplan \
+              -no-color 2>&1 | tee plan-output.txt
+          else
+            terraform plan \
+              -var="rds_password=${{ secrets.RDS_PASSWORD }}" \
+              -out=tfplan \
+              -no-color 2>&1 | tee plan-output.txt
+          fi
 
       - name: Comentar plan no PR
         if: github.event_name == 'pull_request'
@@ -262,6 +288,18 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init
 
+      - name: Detect EKS bootstrap mode
+        id: eks
+        run: |
+          if aws eks describe-cluster \
+               --name solidarytech-prod-eks \
+               --region ${{ env.AWS_REGION }} \
+               --query "cluster.status" --output text 2>/dev/null | grep -qE "ACTIVE|UPDATING"; then
+            echo "bootstrap=false" >> $GITHUB_OUTPUT
+          else
+            echo "bootstrap=true" >> $GITHUB_OUTPUT
+          fi
+
       # Download AFTER init: the plan binary must match the provider versions
       # installed by init in this job's runner
       - name: Download plan artifact
@@ -272,4 +310,16 @@ jobs:
 
       - name: terraform apply
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform apply -auto-approve tfplan
+        run: |
+          if [ "${{ steps.eks.outputs.bootstrap }}" = "true" ]; then
+            # Primeiro deploy: o tfplan cobre apenas module.eks (gerado pelo plan job)
+            # Fase 1: aplica EKS para que os providers K8s/Helm possam se conectar
+            terraform apply -auto-approve tfplan
+            # Fase 2: aplica tudo o mais (ArgoCD, RDS, ElastiCache, etc.)
+            echo "EKS criado. Aplicando infra completa..."
+            terraform apply -auto-approve \
+              -var="rds_password=${{ secrets.RDS_PASSWORD }}"
+          else
+            # Deploy normal: cluster ja existe, aplica o plan completo
+            terraform apply -auto-approve tfplan
+          fi
