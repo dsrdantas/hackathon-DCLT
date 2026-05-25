@@ -1,875 +1,736 @@
-# 🚀 SolidaryTech — Hackathon Fase 5
+# 🚀 SolidaryTech — Hackathon FIAP TC5
 
-Bem-vindo ao repositório oficial da **SolidaryTech**.
+Plataforma de doações e voluntariado desenvolvida como projeto do **Hackathon Fase 5 (TC5)** da FIAP.
 
-Este monorepo contém os microsserviços que compõem a plataforma da ONG e servirá como base para os desafios do Hackathon Fase 5.
-
-O objetivo principal deste projeto é aplicar conceitos modernos de:
-
-- SRE (Site Reliability Engineering)
-- FinOps
-- Multicloud
-- ITSM
-- Observabilidade
-- Resiliência
-- Kubernetes & GitOps
-- Infraestrutura como Código (IaC)
+Aplica conceitos de **SRE, FinOps, Kubernetes, GitOps, IaC e Observabilidade** em um ambiente AWS real.
 
 ---
 
-# 🏗️ Arquitetura dos Microsserviços
+## 📋 Índice
 
-O ecossistema é composto por **3 microsserviços independentes**, desenvolvidos com tecnologias diferentes para simular um ambiente corporativo distribuído.
-
----
-
-## 1️⃣ NGO Service — Cadastro de ONGs
-
-| Item | Valor |
-|---|---|
-| Linguagem | Python 3.9+ |
-| Framework | Flask |
-| Banco de Dados | PostgreSQL |
-| Porta Local | `8081` |
-
-### 📌 Descrição
-Responsável pelo gerenciamento e cadastro das ONGs parceiras da plataforma.
+- [Arquitetura](#-arquitetura)
+- [Estrutura do Repositório](#-estrutura-do-repositório)
+- [Microsserviços](#-microsserviços)
+- [Infraestrutura AWS (Terraform)](#-infraestrutura-aws-terraform)
+- [GitOps — ArgoCD](#-gitops--argocd)
+- [CI/CD — GitHub Actions](#-cicd--github-actions)
+- [Observabilidade](#-observabilidade)
+- [Secrets e Variáveis do GitHub](#-secrets-e-variáveis-do-github)
+- [Credenciais AWS Academy](#-credenciais-aws-academy)
+- [Executando Localmente](#-executando-localmente)
+- [Primeiro Deploy em Produção](#-primeiro-deploy-em-produção)
 
 ---
 
-## 2️⃣ Donation Service — Processamento de Doações
+## 🏗️ Arquitetura
 
-| Item | Valor |
-|---|---|
-| Linguagem | Go 1.21+ |
-| Banco de Dados | PostgreSQL |
-| Mensageria | AWS SQS |
-| Porta Local | `8082` |
+```
+Internet
+    │
+    ▼
+AWS NLB (LoadBalancer)
+    │
+    ▼
+Traefik Ingress Controller (EKS)
+    │
+    ├── /ngo        ──▶  ngo-service      (Python/Flask + PostgreSQL/RDS)
+    ├── /donation   ──▶  donation-service (Go + PostgreSQL/RDS + SQS)
+    └── /volunteer  ──▶  volunteer-service (Python/Flask + DynamoDB)
 
-### 📌 Descrição
-Este é o **Hot Path** da aplicação.
+Observabilidade:
+    Services ──OTLP──▶ OTel Collector ──▶ Prometheus / Grafana
+                                      ──▶ New Relic (OTLP HTTP)
 
-Responsável pelo processamento das doações e publicação de eventos assíncronos em filas para processamento posterior.
-
----
-
-## 3️⃣ Volunteer Service — Gestão de Voluntários
-
-| Item | Valor |
-|---|---|
-| Linguagem | Python 3.9+ |
-| Framework | Flask |
-| Banco de Dados | AWS DynamoDB |
-| Porta Local | `8083` |
-
-### 📌 Descrição
-Gerencia o cadastro e inscrição de voluntários interessados em apoiar as ONGs parceiras.
-
-Utiliza armazenamento NoSQL nativo da AWS com foco em escalabilidade.
-
----
-
-# 📁 Estrutura do Repositório
-
-```text
-.
-├── ngo-service/          # Código Python e scripts SQL do serviço de ONGs
-├── donation-service/     # Código Go e scripts SQL do serviço de doações
-└── volunteer-service/    # Código Python do serviço de voluntários
+Secrets:
+    AWS Secrets Manager ◀──── Terraform cria
+    ESO ClusterSecretStore ──▶ K8s Secrets ──▶ Deployments
+    Stakater Reloader ──▶ RollingUpdate automático ao atualizar Secret
 ```
 
 ---
 
-# 🚀 Executando Localmente
+## 📁 Estrutura do Repositório
 
-Antes de realizar deploy em Kubernetes e automatizações CI/CD, recomenda-se validar todo o ambiente localmente.
-
-Existem duas formas de executar o projeto: **via Docker Compose** (recomendado) ou **manualmente** em terminais separados.
-
----
-
-# 🐳 Opção A — Docker Compose (Recomendado)
-
-Sobe toda a stack com um único comando: bancos de dados, filas, serviços e infraestrutura AWS simulada.
-
-## Estrutura de arquivos
-
-```text
-.
-├── docker-compose.yml
+```
+hackathon-DCLT/
+│
+├── .github/
+│   └── workflows/
+│       ├── ngo-service.yml          # CI/CD: test → scan → build → deploy
+│       ├── donation-service.yml     # CI/CD: test → scan → build → deploy
+│       ├── volunteer-service.yml    # CI/CD: test → scan → build → deploy
+│       ├── terraform.yml            # Terraform: validate → plan → apply
+│       └── update-aws-credentials.yml  # Injeta credenciais AWS Academy no EKS
+│
+├── ngo-service/                     # Python 3.11 / Flask
+│   ├── Dockerfile                   # Multi-stage: python:3.11-slim → slim
+│   ├── app.py                       # API + OTel traces/metrics/logs
+│   ├── requirements.txt             # Flask, psycopg2, opentelemetry-*
+│   └── db/init.sql                  # Schema da tabela ngos
+│
+├── donation-service/                # Go 1.25
+│   ├── Dockerfile                   # Multi-stage: golang:1.25-alpine → distroless
+│   ├── main.go                      # API + OTel traces/metrics + slog JSON
+│   ├── go.mod / go.sum              # Deps: otel v1.43.0, grpc v1.80.0
+│   └── db/init.sql                  # Schema da tabela donations
+│
+├── volunteer-service/               # Python 3.11 / Flask
+│   ├── Dockerfile                   # Multi-stage: python:3.11-slim → slim
+│   ├── app.py                       # API + OTel traces/metrics/logs
+│   ├── requirements.txt             # Flask, boto3, opentelemetry-*
+│   └── (sem banco relacional — usa DynamoDB)
+│
+├── gitops/                          # Manifestos Kubernetes (monitorados pelo ArgoCD)
+│   ├── argocd-apps.yaml             # AppProject + 6 Applications
+│   ├── traefik/
+│   │   ├── ingressroutes.yaml       # Rotas centralizadas: /ngo /donation /volunteer
+│   │   └── middlewares.yaml         # StripPrefix + SecureHeaders
+│   ├── external-secrets/
+│   │   └── cluster-secret-store.yaml # ClusterSecretStore → AWS Secrets Manager
+│   ├── ngo-service/
+│   │   ├── namespace.yaml
+│   │   ├── deployment.yaml          # ← image tag atualizada automaticamente pelo CI
+│   │   ├── service.yaml
+│   │   ├── hpa.yaml
+│   │   └── external-secret.yaml     # ExternalSecret → K8s Secret
+│   ├── donation-service/
+│   │   ├── namespace.yaml
+│   │   ├── deployment.yaml
+│   │   ├── service.yaml
+│   │   ├── hpa.yaml
+│   │   └── external-secret.yaml
+│   ├── volunteer-service/
+│   │   ├── namespace.yaml
+│   │   ├── deployment.yaml
+│   │   ├── service.yaml
+│   │   ├── hpa.yaml
+│   │   └── external-secret.yaml
+│   └── observability/
+│       ├── servicemonitors.yaml     # Prometheus ServiceMonitors (OTel + serviços)
+│       └── grafana-dashboard.yaml   # Dashboard SolidaryTech (importado automaticamente)
+│
+├── terraform/                       # Infraestrutura como Código
+│   ├── main.tf                      # Orquestração dos módulos
+│   ├── variables.tf / terraform.tfvars
+│   ├── providers.tf                 # AWS + Helm + Kubernetes providers
+│   ├── backend.tf                   # S3 backend + DynamoDB lock
+│   ├── outputs.tf
+│   └── modules/
+│       ├── vpc/                     # VPC + subnets públicas/privadas
+│       ├── eks/                     # Cluster EKS + node group
+│       ├── rds/                     # PostgreSQL (ngo_db, donation_db)
+│       ├── elasticache/             # Redis
+│       ├── sqs/                     # Fila solidary-donations
+│       ├── dynamodb/                # Tabela SolidaryTechVolunteers
+│       ├── secrets/                 # AWS Secrets Manager (um secret por serviço)
+│       ├── gitops/                  # ArgoCD, Traefik, ESO, Reloader, Prometheus, OTel
+│       └── finops/                  # Budgets, alertas e anomaly detection
+│
 ├── scripts/
-│   ├── postgres/
-│   │   └── init.sh                        # Cria os bancos e executa os SQLs de init
-│   └── localstack/
-│       └── init-aws.sh                    # Cria tabela DynamoDB e fila SQS
-├── ngo-service/
-│   ├── Dockerfile                         # Multi-stage (Python/venv)
-│   ├── app.py
-│   ├── requirements.txt
-│   └── db/init.sql                        # Schema da tabela ngos
-├── donation-service/
-│   ├── Dockerfile                         # Multi-stage (Go/distroless)
-│   ├── main.go
-│   ├── go.mod
-│   └── db/init.sql                        # Schema da tabela donations
-└── volunteer-service/
-    ├── Dockerfile                         # Multi-stage (Python/venv)
-    ├── app.py
-    └── requirements.txt
+│   ├── postgres/init.sql            # Schema local para desenvolvimento
+│   └── localstack/init-aws.sh       # Cria DynamoDB + SQS no LocalStack
+│
+└── docker-compose.yml               # Stack completa para desenvolvimento local
 ```
 
 ---
 
-## ✅ Pré-requisitos
+## 🔧 Microsserviços
 
-| Ferramenta | Versão mínima | Verificar |
-|---|---|---|
-| Docker | 24+ | `docker --version` |
-| Docker Compose | v2 | `docker compose version` |
+### 1️⃣ NGO Service — Cadastro de ONGs
 
-> Não é necessário instalar Python, Go, PostgreSQL ou AWS CLI localmente.
+| Item | Valor |
+|---|---|
+| Linguagem | Python 3.11 |
+| Framework | Flask 2.2 |
+| Banco | PostgreSQL (RDS) |
+| Porta | `8081` |
+| Rota pública | `http://<lb>/ngo/ngos` |
+| Secret K8s | `ngo-service-secrets` → `database-url` |
+
+**Endpoints:**
+```
+GET  /health      → status do serviço
+GET  /ngos        → lista todas as ONGs
+POST /ngos        → cria nova ONG (name, email, cause, city)
+```
+
+**Observabilidade:** traces automáticos via `FlaskInstrumentor` + `Psycopg2Instrumentor`, métricas `ngo_created_total` / `ngo_errors_total`, logs JSON com `trace_id`.
 
 ---
 
-## ▶️ Subindo a stack
+### 2️⃣ Donation Service — Processamento de Doações
 
-```bash
-# Construir as imagens e subir todos os containers
-docker compose up --build
+| Item | Valor |
+|---|---|
+| Linguagem | Go 1.25 |
+| Banco | PostgreSQL (RDS) |
+| Mensageria | AWS SQS |
+| Porta | `8082` |
+| Rota pública | `http://<lb>/donation/donations` |
+| Secret K8s | `donation-service-secrets` → `database-url`, `sqs-queue-url` |
 
-# Em background (modo detached)
-docker compose up --build -d
+**Endpoints:**
+```
+GET  /health     → status do serviço
+GET  /donations  → lista todas as doações
+POST /donations  → processa doação (ngo_id, amount, donor_name)
 ```
 
-Aguarde as mensagens de inicialização. A ordem de boot é controlada automaticamente via `depends_on` + `healthcheck`:
-
-```
-postgres  ──(healthy)──▶  ngo-service
-                      ──▶  donation-service ◀──(healthy)── localstack
-                                                        ──▶ volunteer-service
-```
+**Observabilidade:** traces via `otelhttp` middleware, métricas `donation_created_total` / `donation_errors_total`, logs JSON via `slog.NewJSONHandler`.
 
 ---
 
-## 🌐 Serviços e portas
+### 3️⃣ Volunteer Service — Gestão de Voluntários
 
-| Container | Serviço | URL | Tecnologia |
+| Item | Valor |
+|---|---|
+| Linguagem | Python 3.11 |
+| Framework | Flask 2.2 |
+| Banco | AWS DynamoDB |
+| Porta | `8083` |
+| Rota pública | `http://<lb>/volunteer/volunteers` |
+| Secret K8s | `volunteer-service-secrets` → `dynamodb-table`, `aws-region` |
+
+**Endpoints:**
+```
+GET  /health                 → status do serviço
+GET  /volunteers/<ngo_id>    → voluntários de uma ONG
+POST /volunteers             → registra voluntário (name, email, ngo_id)
+```
+
+**Observabilidade:** traces via `FlaskInstrumentor` + `BotocoreInstrumentor`, métricas `volunteer_registered_total` / `volunteer_errors_total`, logs JSON com `trace_id`.
+
+---
+
+## ☁️ Infraestrutura AWS (Terraform)
+
+### Módulos e recursos criados
+
+| Módulo | Recursos AWS |
+|---|---|
+| `vpc` | VPC + 4 tipos de subnet (public, eks, rds, elasticache) + NAT Gateway |
+| `eks` | Cluster EKS 1.33 + Node Group (t3.medium, 2–4 nós) |
+| `rds` | 2× RDS PostgreSQL 16 (ngo_db, donation_db) via `for_each` |
+| `elasticache` | Redis 7.1 (1 nó cache.t3.micro) |
+| `sqs` | Fila Standard `solidary-donations` |
+| `dynamodb` | Tabela `SolidaryTechVolunteers` (PAY_PER_REQUEST) |
+| `secrets` | 3× AWS Secrets Manager (um por serviço) com valores dos outputs |
+| `gitops` | ECR ×3, ArgoCD, Traefik, ESO, Reloader, Prometheus Stack, OTel Collector |
+| `finops` | AWS Budgets + Anomaly Detection + tags estruturadas |
+
+### Helm releases gerenciadas pelo módulo `gitops`
+
+| Release | Chart | Namespace | Finalidade |
 |---|---|---|---|
-| `tc5-postgres` | PostgreSQL | `localhost:5432` | PostgreSQL 16 |
-| `tc5-localstack` | AWS (DynamoDB + SQS) | `localhost:4566` | LocalStack 3 |
-| `tc5-ngo-service` | NGO Service | http://localhost:8081 | Python / Flask |
-| `tc5-donation-service` | Donation Service | http://localhost:8082 | Go |
-| `tc5-volunteer-service` | Volunteer Service | http://localhost:8083 | Python / Flask |
+| ArgoCD | `argo-cd` 7.6.8 | `argocd` | GitOps controller |
+| Traefik | `traefik` 32.1.0 | `traefik` | Ingress + NLB |
+| ESO | `external-secrets` 0.10.3 | `external-secrets` | Sync SM → K8s Secrets |
+| Reloader | `reloader` 1.0.72 | `kube-system` | Restart automático ao atualizar Secret |
+| metrics-server | `metrics-server` 3.12.1 | `kube-system` | Necessário para HPA |
+| kube-prometheus-stack | 65.1.1 | `monitoring` | Prometheus + Grafana + AlertManager |
+| OTel Collector | 0.108.0 | `observability` | Pipeline OTLP → Prometheus + New Relic |
+
+### Comandos Terraform
+
+```bash
+cd terraform
+
+# Primeira execução: criar VPC e EKS antes dos demais módulos
+terraform apply -target=module.vpc -target=module.eks
+
+# Aplicar tudo (segunda execução)
+terraform apply
+
+# Apenas validar sem criar recursos
+terraform plan
+```
+
+> **Backend:** Estado armazenado em S3 com lock via DynamoDB.  
+> Configure os recursos do backend executando `terraform/scripts/init-backend.sh` antes do primeiro `terraform init`.
 
 ---
 
-## 🔌 Strings de conexão
+## 🔄 GitOps — ArgoCD
 
-| Recurso | Conexão |
-|---|---|
-| **PostgreSQL — ngo_db** | `postgres://tc5:supersenha@localhost:5432/ngo_db` |
-| **PostgreSQL — donation_db** | `postgres://tc5:supersenha@localhost:5432/donation_db` |
-| **DynamoDB (LocalStack)** | endpoint `http://localhost:4566` / região `us-east-1` |
-| **SQS (LocalStack)** | `http://localhost:4566/000000000000/solidary-donations` |
+O ArgoCD monitora este repositório (`branch: main`) e sincroniza automaticamente as Applications.
 
-> **Credenciais AWS para LocalStack:** `AWS_ACCESS_KEY_ID=test` / `AWS_SECRET_ACCESS_KEY=test`
+### AppProject `solidarytech` — Applications e sync-waves
 
----
-
-## ⚙️ Variáveis de ambiente (Docker Compose)
-
-As variáveis são definidas diretamente no `docker-compose.yml`, não é necessário criar arquivos `.env` para rodar com Docker.
-
-### ngo-service
-
-| Variável | Valor |
-|---|---|
-| `PORT` | `8081` |
-| `DATABASE_URL` | `postgres://tc5:supersenha@postgres:5432/ngo_db` |
-
-### donation-service
-
-| Variável | Valor |
-|---|---|
-| `PORT` | `8082` |
-| `DATABASE_URL` | `postgres://tc5:supersenha@postgres:5432/donation_db` |
-| `AWS_REGION` | `us-east-1` |
-| `AWS_ACCESS_KEY_ID` | `test` |
-| `AWS_SECRET_ACCESS_KEY` | `test` |
-| `AWS_ENDPOINT_URL` | `http://localstack:4566` |
-| `AWS_SQS_URL` | `http://localstack:4566/000000000000/solidary-donations` |
-
-### volunteer-service
-
-| Variável | Valor |
-|---|---|
-| `PORT` | `8083` |
-| `AWS_REGION` | `us-east-1` |
-| `AWS_ACCESS_KEY_ID` | `test` |
-| `AWS_SECRET_ACCESS_KEY` | `test` |
-| `AWS_ENDPOINT_URL` | `http://localstack:4566` |
-| `AWS_DYNAMODB_TABLE` | `SolidaryTechVolunteers` |
-
----
-
-## 🗄️ Bancos de dados e recursos AWS
-
-### PostgreSQL
-
-| Banco | Tabela principal | Inicializado por |
-|---|---|---|
-| `ngo_db` | `ngos` | `ngo-service/db/init.sql` |
-| `donation_db` | `donations` | `donation-service/db/init.sql` |
-
-> Os scripts de init rodam **apenas na primeira vez** que o volume é criado.  
-> Para reinicializar do zero: `docker compose down -v && docker compose up --build`
-
-### DynamoDB (LocalStack)
-
-| Tabela | Partition Key | Tipo |
-|---|---|---|
-| `SolidaryTechVolunteers` | `volunteer_id` | `String` |
-
-### SQS (LocalStack)
-
-| Fila | Tipo |
-|---|---|
-| `solidary-donations` | Standard Queue |
-
----
-
-## ✅ Verificando os recursos
-
-```bash
-# Health checks dos serviços
-curl http://localhost:8081/health
-curl http://localhost:8082/health
-curl http://localhost:8083/health
-
-# Listar tabelas DynamoDB
-aws --endpoint-url=http://localhost:4566 dynamodb list-tables --region us-east-1
-
-# Listar filas SQS
-aws --endpoint-url=http://localhost:4566 sqs list-queues --region us-east-1
-
-# Conectar no PostgreSQL
-psql -h localhost -U tc5 -d ngo_db
-psql -h localhost -U tc5 -d donation_db
-```
-
----
-
-## 🧪 Testando os endpoints
-
-### NGO Service — `POST /ngos`
-
-```bash
-curl -s -X POST http://localhost:8081/ngos \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Instituto Esperança","email":"contato@esperanca.org","cause":"Educação","city":"São Paulo"}' \
-  | jq .
-```
-
-### NGO Service — `GET /ngos`
-
-```bash
-curl -s http://localhost:8081/ngos | jq .
-```
-
-### Donation Service — `POST /donations`
-
-```bash
-curl -s -X POST http://localhost:8082/donations \
-  -H "Content-Type: application/json" \
-  -d '{"ngo_id":1,"amount":150.00,"donor_name":"Maria Silva"}' \
-  | jq .
-```
-
-### Donation Service — `GET /donations`
-
-```bash
-curl -s http://localhost:8082/donations | jq .
-```
-
-### Volunteer Service — `POST /volunteers`
-
-```bash
-curl -s -X POST http://localhost:8083/volunteers \
-  -H "Content-Type: application/json" \
-  -d '{"name":"João Souza","email":"joao@email.com","ngo_id":1}' \
-  | jq .
-```
-
-### Volunteer Service — `GET /volunteers/{ngo_id}`
-
-```bash
-curl -s http://localhost:8083/volunteers/1 | jq .
-```
-
----
-
-## 🛠️ Comandos úteis
-
-```bash
-# Ver logs de todos os serviços em tempo real
-docker compose logs -f
-
-# Ver logs de um serviço específico
-docker compose logs -f ngo-service
-docker compose logs -f donation-service
-docker compose logs -f volunteer-service
-docker compose logs -f localstack
-
-# Ver status dos containers
-docker compose ps
-
-# Parar a stack (mantém volumes/dados)
-docker compose down
-
-# Parar e apagar todos os dados
-docker compose down -v
-
-# Reconstruir apenas um serviço
-docker compose build ngo-service
-docker compose up -d --no-deps ngo-service
-
-# Reiniciar um serviço sem rebuild
-docker compose restart donation-service
-```
-
----
-
-## 🏗️ Dockerfiles — estratégia multi-stage
-
-| Serviço | Builder | Runtime | Resultado |
+| Application | Wave | Path no repo | Namespace destino |
 |---|---|---|---|
-| `ngo-service` | `python:3.11-slim` + venv | `python:3.11-slim` | Sem compiladores na imagem final |
-| `donation-service` | `golang:1.21-alpine` | `distroless/static` | Binário estático ~5MB, sem shell |
-| `volunteer-service` | `python:3.11-slim` + venv | `python:3.11-slim` | Sem compiladores na imagem final |
+| `external-secrets-config` | `-1` | `gitops/external-secrets/` | `external-secrets` |
+| `traefik-routes` | `-1` | `gitops/traefik/` | `traefik` |
+| `observability` | `-1` | `gitops/observability/` | `observability` |
+| `ngo-service` | `0` | `gitops/ngo-service/` | `ngo` |
+| `donation-service` | `0` | `gitops/donation-service/` | `donation` |
+| `volunteer-service` | `0` | `gitops/volunteer-service/` | `volunteer` |
 
----
+> Wave `-1` garante que ESO, Traefik e Prometheus ServiceMonitors existam antes dos microserviços.
 
-# 💻 Opção B — Execução Manual (sem Docker)
+### Fluxo de Secrets (sem IRSA)
 
-## ✅ Pré-requisitos
+> **⚠️ Restrição AWS Academy:** a `LabRole` não permite criar IAM roles ou OIDC providers.  
+> Todos os secrets são injetados via credenciais estáticas — nunca via IRSA.
 
-- Python 3.9+
-- Go 1.21+
-- PostgreSQL instalado e rodando
-- AWS CLI configurado com credenciais válidas
+```
+GitHub Secrets (AWS_ACCESS_KEY_ID / SECRET / TOKEN)
+        │
+        ▼ (workflow: update-aws-credentials)
+K8s Secret "aws-academy-credentials" (namespace: external-secrets)
+        │
+        ▼ ESO ClusterSecretStore
+AWS Secrets Manager
+  solidarytech/prod/ngo-service
+  solidarytech/prod/donation-service
+  solidarytech/prod/volunteer-service
+        │
+        ▼ ExternalSecret (por namespace de serviço)
+K8s Secret "<service>-secrets"
+        │
+        ▼ Deployment (env.valueFrom.secretKeyRef)
+        │
+        ▼ Stakater Reloader → RollingUpdate automático
+```
 
-## 🛠️ Passo 1 — Preparação da Infraestrutura
-
-### PostgreSQL
-
-Crie dois bancos de dados e execute os scripts:
+### Comandos ArgoCD úteis
 
 ```bash
-# ngo_db
-psql -U seu_usuario -c "CREATE DATABASE ngo_db;"
-psql -U seu_usuario -d ngo_db -f ngo-service/db/init.sql
+# Senha do admin ArgoCD
+kubectl get secret argocd-initial-admin-secret \
+  -n argocd -o jsonpath='{.data.password}' | base64 -d
 
-# donation_db
-psql -U seu_usuario -c "CREATE DATABASE donation_db;"
-psql -U seu_usuario -d donation_db -f donation-service/db/init.sql
+# Interface web (port-forward)
+kubectl port-forward svc/argocd-server -n argocd 8080:80
+# Acesse: http://localhost:8080  (admin / senha acima)
+
+# Sync manual de uma application
+argocd app sync ngo-service --prune
+
+# Status de todas as applications
+argocd app list
 ```
 
-### AWS DynamoDB
-
-Crie a tabela:
-
-| Configuração | Valor |
-|---|---|
-| Nome da Tabela | `SolidaryTechVolunteers` |
-| Partition Key | `volunteer_id` (String) |
-
-### AWS SQS
-
-Crie uma fila do tipo **Standard Queue** e guarde a URL:
-
-```text
-https://sqs.us-east-1.amazonaws.com/<account-id>/solidary-donations
-```
-
-## ⚙️ Passo 2 — Variáveis de Ambiente
-
-Crie um arquivo `.env` dentro de cada microsserviço.
-
-### `ngo-service/.env`
-
-```env
-PORT=8081
-DATABASE_URL="postgres://SEU_USUARIO:SUA_SENHA@localhost:5432/ngo_db"
-```
-
-### `donation-service/.env`
-
-```env
-PORT=8082
-DATABASE_URL="postgres://SEU_USUARIO:SUA_SENHA@localhost:5432/donation_db"
-AWS_REGION="us-east-1"
-AWS_SQS_URL="SUA_URL_DA_FILA_SQS"
-```
-
-### `volunteer-service/.env`
-
-```env
-PORT=8083
-AWS_REGION="us-east-1"
-AWS_DYNAMODB_TABLE="SolidaryTechVolunteers"
-```
-
-## ▶️ Passo 3 — Inicializando os Serviços
-
-Abra **3 terminais separados**.
-
-### 🟣 Terminal 1 — NGO Service
+### Traefik — Rotas e LoadBalancer
 
 ```bash
-cd ngo-service
-pip install -r requirements.txt
-gunicorn --bind 0.0.0.0:8081 app:app
+# Obter hostname do NLB
+kubectl get svc traefik -n traefik \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 ```
 
-### 🟠 Terminal 2 — Donation Service
-
-```bash
-cd donation-service
-go mod tidy
-go run .
-```
-
-### 🔵 Terminal 3 — Volunteer Service
-
-```bash
-cd volunteer-service
-pip install -r requirements.txt
-gunicorn --bind 0.0.0.0:8083 app:app
-```
-
----
-
-# 🌐 Portas Locais
-
-| Serviço | URL |
-|---|---|
-| NGO Service | http://localhost:8081 |
-| Donation Service | http://localhost:8082 |
-| Volunteer Service | http://localhost:8083 |
-
----
-
-# 🔧 Melhorias e Correções Efetuadas
-
-Registro das correções aplicadas durante a conteinerização e execução local da stack.
-
----
-
-## 1. `donation-service` — Entrada inválida no `go.mod`
-
-**Arquivo:** `donation-service/go.mod`
-
-**Problema:** `github.com/jackc/pgx/v4/stdlib` estava listado como dependência independente no bloco `require`, com versão `v4.18.3`. O Go rejeitou essa entrada porque `stdlib` é um sub-pacote do módulo `pgx/v4`, não um módulo separado — e um path sem `/v4` no nome não pode ter versão `v4.x`.
-
-```
-go.mod:19:2: require github.com/jackc/pgx/v4/stdlib: version "v4.18.3" invalid: should be v0 or v1, not v4
-```
-
-**Correção:** Remoção da linha inválida. O pacote `stdlib` já é coberto pela dependência `github.com/jackc/pgx/v4 v4.18.3`.
-
----
-
-## 2. `donation-service` — Imports não utilizados
-
-**Arquivo:** `donation-service/main.go`
-
-**Problema:** Os pacotes `fmt` e `strconv` estavam importados mas não eram usados em nenhum ponto do código. Em Go, imports não utilizados são **erro de compilação** (não apenas aviso).
-
-```
-./main.go:6:2: "fmt" imported and not used
-./main.go:10:2: "strconv" imported and not used
-```
-
-**Correção:** Remoção dos dois imports.
-
----
-
-## 3. `donation-service` — `go.sum` ausente
-
-**Arquivo:** `donation-service/go.sum`
-
-**Problema:** O arquivo `go.sum` não existia no repositório. O Go exige esse arquivo para verificar a integridade criptográfica das dependências — sem ele, o `go build` recusa compilar.
-
-```
-missing go.sum entry for module providing package github.com/aws/aws-sdk-go/aws
-```
-
-**Correção:** Execução de `go mod tidy` localmente para gerar o `go.sum`. O arquivo deve sempre ser commitado junto com o `go.mod`.
-
----
-
-## 4. `ngo-service` / `volunteer-service` — Incompatibilidade Flask + Werkzeug
-
-**Arquivos:** `ngo-service/requirements.txt`, `volunteer-service/requirements.txt`
-
-**Problema:** `Flask==2.2.2` depende internamente de `werkzeug.urls.url_quote`, que foi **removido no Werkzeug 3.0+**. O `pip`, sem versão fixada, instalava a versão mais recente (3.x), causando falha na inicialização do Gunicorn.
-
-```
-ImportError: cannot import name 'url_quote' from 'werkzeug.urls'
-```
-
-**Correção:** Pin explícito `Werkzeug==2.3.8` — última versão estável da linha 2.x, totalmente compatível com Flask 2.2.
-
----
-
-## 5. `ngo-service` — Autenticação SCRAM não suportada pelo `psycopg2-binary`
-
-**Arquivo:** `ngo-service/requirements.txt`
-
-**Problema:** `psycopg2-binary==2.9.5` vinha bundlado com uma versão antiga do `libpq` que não suportava o método de autenticação **SCRAM-SHA-256**, padrão no PostgreSQL 14+.
-
-```
-CRITICAL - Erro ao conectar ao PostgreSQL: SCRAM authentication requires libpq version 10 or above
-```
-
-**Correção:** Atualização para `psycopg2-binary==2.9.9`, que inclui `libpq 16` e suporta SCRAM-SHA-256.
-
----
-
-## 6. `volunteer-service` — `boto3` antigo sem suporte a `AWS_ENDPOINT_URL`
-
-**Arquivo:** `volunteer-service/requirements.txt`
-
-**Problema:** `boto3==1.26.50` não reconhece a variável de ambiente `AWS_ENDPOINT_URL`. O suporte nativo a essa variável foi adicionado apenas no **boto3 1.28.0**. Com isso, todas as chamadas ao DynamoDB eram direcionadas para a AWS real, resultando em erro de autenticação com as credenciais fictícias do LocalStack.
-
-```
-UnrecognizedClientException: The security token included in the request is invalid.
-```
-
-**Correção:** Atualização para `boto3==1.34.0`.
-
----
-
-## 7. `donation-service` — `aws-sdk-go v1` ignora `AWS_ENDPOINT_URL`
-
-**Arquivo:** `donation-service/main.go`
-
-**Problema:** O `aws-sdk-go v1` **nunca** lê a variável `AWS_ENDPOINT_URL` automaticamente (diferente do SDK v2). Sem um endpoint explícito na sessão, o SDK enviava as requisições SQS para a AWS real, falhando com as credenciais fictícias do LocalStack.
-
-```
-InvalidClientTokenId: The security token included in the request is invalid.
-```
-
-**Correção:** Leitura manual da variável `AWS_ENDPOINT_URL` e injeção em `aws.Config` antes de criar a sessão:
-
-```go
-awsCfg := &aws.Config{Region: aws.String(region)}
-if endpoint := os.Getenv("AWS_ENDPOINT_URL"); endpoint != "" {
-    awsCfg.Endpoint = aws.String(endpoint)
-}
-sess, _ := session.NewSession(awsCfg)
-```
-
----
-
-# 🎯 Objetivos do Hackathon
-
-O código fornecido representa apenas a base do software.
-
-O verdadeiro desafio está na engenharia, operação e resiliência da plataforma.
-
----
-
-# 📦 Conteinerização
-
-- Criar Dockerfiles
-- Otimizar imagens
-- Implementar estratégias multi-stage build
-- Reduzir vulnerabilidades
-
----
-
-# ☁️ Infraestrutura como Código (Terraform)
-
-Provisionar:
-
-- Amazon EKS
-- Amazon RDS
-- Amazon ElastiCache
-- Amazon SQS
-- Amazon DynamoDB
-- VPC, Subnets e Security Groups
-
-## 💰 FinOps
-
-Implementar:
-
-- Tags estruturadas
-- Controle de custos
-- Rightsizing
-- Budgets e alertas financeiros
-
----
-
-# 🔄 CI/CD & GitOps
-
-Automatizar:
-
-- Testes
-- Security Scans
-- Build de imagens
-- Deploy em Kubernetes
-
-Ferramentas sugeridas:
-
-- GitHub Actions
-- ArgoCD
-- FluxCD
-
----
-
-# 📊 Observabilidade
-
-Instrumentar os serviços utilizando:
-
-- OpenTelemetry
-- Distributed Tracing
-- Métricas
-- Logs estruturados
-
-Ferramentas sugeridas:
-
-- Grafana
-- Prometheus
-- Datadog
-- New Relic
-
----
-
-# 🛡️ SRE & Resiliência
-
-Definir:
-
-- SLIs
-- SLOs
-- Error Budgets
-- Estratégias de Disaster Recovery
-- Alertas inteligentes
-- Health Checks
-- Auto Healing
-
-## 🔥 Foco Principal
-
-O `donation-service` deve ser tratado como componente crítico da plataforma.
-
----
-
-# 📚 Tecnologias Envolvidas
-
-- Python
-- Flask
-- Go
-- PostgreSQL
-- DynamoDB
-- AWS SQS
-- Docker
-- Kubernetes
-- Terraform
-- GitOps
-- OpenTelemetry
-
----
-
-# 🔄 CI/CD & GitOps
-
-## Visão Geral
-
-O pipeline de automação é composto por dois planos:
-
-| Plano | Ferramentas | Responsabilidade |
+| Rota | Serviço interno | Porta |
 |---|---|---|
-| **CI** (Integração Contínua) | GitHub Actions | Testes, security scan, build e push de imagem para ECR |
-| **CD** (Entrega Contínua) | ArgoCD + Traefik | Sincronização automática dos manifestos no cluster EKS |
-
-```
-Push → GitHub Actions → ECR (imagem) → atualiza tag no gitops/ → ArgoCD detecta mudança → deploy no EKS
-```
+| `http://<lb>/ngo/*` | `ngo-service.ngo` | 8081 |
+| `http://<lb>/donation/*` | `donation-service.donation` | 8082 |
+| `http://<lb>/volunteer/*` | `volunteer-service.volunteer` | 8083 |
 
 ---
 
-## 📁 Estrutura dos Arquivos
+## ⚙️ CI/CD — GitHub Actions
+
+### Pipeline por serviço
 
 ```
-.github/
-└── workflows/
-    ├── ngo-service.yml        # Pipeline do ngo-service (Python)
-    ├── donation-service.yml   # Pipeline do donation-service (Go)
-    ├── volunteer-service.yml  # Pipeline do volunteer-service (Python)
-    └── terraform.yml          # Validação e apply da infraestrutura
-
-gitops/
-├── argocd-apps.yaml           # AppProject + Applications do ArgoCD
-├── ngo-service/
-│   ├── namespace.yaml
-│   ├── deployment.yaml        # ← image tag atualizada automaticamente pelo CI
-│   ├── service.yaml
-│   ├── hpa.yaml
-│   └── ingressroute.yaml      # Traefik IngressRoute
-├── donation-service/
-│   ├── namespace.yaml
-│   ├── deployment.yaml
-│   ├── service.yaml
-│   ├── configmap.yaml         # SQS_QUEUE_URL, AWS_REGION
-│   ├── hpa.yaml
-│   └── ingressroute.yaml
-└── volunteer-service/
-    ├── namespace.yaml
-    ├── deployment.yaml
-    ├── service.yaml
-    ├── configmap.yaml         # DYNAMODB_TABLE, AWS_REGION
-    ├── serviceaccount.yaml    # Pronto para IRSA
-    ├── hpa.yaml
-    └── ingressroute.yaml
-```
-
----
-
-## ⚙️ GitHub Actions — Jobs por Serviço
-
-Cada workflow segue a mesma estrutura de 4 jobs encadeados:
-
-```
-test → security-scan → build-push → update-manifest
+push (path filter) → test → security-scan → build-push → update-manifest
+                                                ↑
+                                        apenas branch main
 ```
 
 ### Job 1 — Test
 
 | Serviço | Ferramenta | O que valida |
 |---|---|---|
-| ngo-service | pytest | Testes unitários + importação do módulo |
-| donation-service | go test + go vet | Race conditions + erros de compilação |
-| volunteer-service | pytest | Testes unitários + importação do módulo |
+| ngo-service | pytest / importação | Importação do módulo + testes unitários |
+| donation-service | `go test` + `go vet` | Race conditions + erros de compilação |
+| volunteer-service | pytest / importação | Importação do módulo + testes unitários |
 
 ### Job 2 — Security Scan
 
-| Ferramenta | Aplicada em | Tipo |
+| Ferramenta | Serviço | Comportamento |
 |---|---|---|
-| **Bandit** | ngo-service, volunteer-service | SAST Python |
-| **govulncheck** | donation-service | Vulnerabilidades em deps Go |
-| **Trivy (fs)** | todos | Scan de dependências + Dockerfile |
-| **Trivy (image)** | todos | Scan da imagem publicada no ECR |
+| **Bandit** (HIGH+) | Python | **Bloqueante** — falha em HIGH/CRITICAL |
+| **govulncheck** | Go | Informativo — reporta mesmo CVEs sem fix disponível |
+| **Trivy fs** (`exit-code: 1`) | Todos | **Bloqueante** — falha em CRITICAL/HIGH com fix disponível |
+| **Trivy image** (`exit-code: 1`) | Todos (build-push) | **Bloqueante** — gate final antes do ECR |
 
-Resultados do Trivy são publicados no GitHub Security → Code Scanning (formato SARIF).
+> `ignore-unfixed: true` no Trivy evita bloqueio por CVEs sem versão corrigida.
 
 ### Job 3 — Build & Push ECR
 
-- Plataforma: **linux/amd64** (sempre)
-- Tag da imagem: `<run_number>-<short_sha>` (ex: `42-a3f9c12`)
+- Plataforma: **`linux/amd64`** (sempre — obrigatório para EKS x86)
+- Tag: `<run_number>-<short_sha>` (ex: `42-a3f9c12`)
 - Também tageia como `latest`
 - Cache de camadas via GitHub Actions cache
 
 ### Job 4 — Update Manifest
 
-- Faz checkout do repo com `GIT_TOKEN`
-- Substitui via `sed` a linha da imagem no `deployment.yaml`
-- Commit com mensagem `[skip ci]` para evitar loop
+- Checkout com `GIT_TOKEN`
+- `sed` substitui a linha `image:` no `deployment.yaml`
+- Commit com `[skip ci]` para evitar loop infinito
+
+### Workflow especial: `update-aws-credentials`
+
+Executado **manualmente** sempre que renovar as credenciais no AWS Academy:
+
+1. Valida credenciais com `aws sts get-caller-identity`
+2. Atualiza kubeconfig do EKS
+3. Cria/atualiza K8s Secret `aws-academy-credentials` (namespace `external-secrets`)
+4. Cria/atualiza K8s Secret `new-relic-credentials` (namespace `observability`)
+5. Força re-sync de todos os `ExternalSecrets`
+
+```bash
+# Executar via GitHub CLI
+gh workflow run update-aws-credentials.yml
+
+# Ou via interface: Actions → "Update AWS Academy Credentials" → Run workflow
+```
 
 ---
 
-## 🔐 Secrets Necessários no GitHub
+## 📊 Observabilidade
 
-Configure em **Settings → Secrets and variables → Actions**:
+### Stack de observabilidade
 
-| Secret | Descrição |
+```
+Serviços (ngo, donation, volunteer)
+    │  OpenTelemetry SDK
+    │  OTLP HTTP → http://otel-collector.observability:4318
+    ▼
+OTel Collector (namespace: observability)
+    │
+    ├──▶ Prometheus exporter (:8889)
+    │         │
+    │         ▼ (ServiceMonitor)
+    │    Prometheus (namespace: monitoring)
+    │         │
+    │         ▼
+    │    Grafana (namespace: monitoring)
+    │    Dashboard: "SolidaryTech — Visão Geral"
+    │
+    └──▶ OTLP HTTP → New Relic
+              endpoint: https://otlp.nr-data.net:4318
+              auth: NEW_RELIC_LICENSE_KEY
+```
+
+### Acessar Grafana
+
+```bash
+# Port-forward
+kubectl port-forward svc/kube-prometheus-stack-grafana -n monitoring 3000:80
+# Acesse: http://localhost:3000  (admin / solidarytech-grafana)
+
+# Senha configurada no Terraform (terraform.tfvars ou variável)
+```
+
+### Métricas de negócio por serviço
+
+| Métrica | Serviço | Descrição |
+|---|---|---|
+| `solidarytech_ngo_created_total` | ngo-service | ONGs criadas com sucesso |
+| `solidarytech_ngo_errors_total` | ngo-service | Erros ao criar/buscar ONGs |
+| `solidarytech_donation_created_total` | donation-service | Doações processadas |
+| `solidarytech_donation_errors_total` | donation-service | Erros no processamento |
+| `solidarytech_volunteer_registered_total` | volunteer-service | Voluntários registrados |
+| `solidarytech_volunteer_errors_total` | volunteer-service | Erros no registro |
+
+### Variáveis de ambiente OTel (injetadas via deployment.yaml)
+
+| Variável | Valor |
 |---|---|
-| `AWS_ACCESS_KEY_ID` | Credencial temporária do AWS Academy |
-| `AWS_SECRET_ACCESS_KEY` | Credencial temporária do AWS Academy |
-| `AWS_SESSION_TOKEN` | **Token de sessão do AWS Academy** (obrigatório com credenciais temporárias) |
-| `AWS_ACCOUNT_ID` | ID da conta AWS (12 dígitos, sem hifens) |
-| `GIT_TOKEN` | PAT com escopo `repo` para push nos manifestos |
-| `RDS_PASSWORD` | Senha do PostgreSQL (usada no terraform plan) |
-
-> ⚠️ **AWS Academy — credenciais temporárias (~4h)**
->
-> O AWS Academy emite `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` e `AWS_SESSION_TOKEN`
-> com validade de aproximadamente 4 horas. Sempre que iniciar uma nova sessão no Learner Lab,
-> copie as três credenciais do painel **"AWS Details"** e atualize os secrets correspondentes.
->
-> Como obter:
-> 1. Abra o **AWS Academy Learner Lab**
-> 2. Clique em **"AWS Details"**
-> 3. Clique em **"Show"** ao lado de *AWS CLI*
-> 4. Copie os valores de `aws_access_key_id`, `aws_secret_access_key` e `aws_session_token`
-> 5. Atualize os três secrets no GitHub antes de disparar os workflows
+| `OTEL_SERVICE_NAME` | `<nome-do-serviço>` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://otel-collector.observability:4318` |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` |
+| `OTEL_RESOURCE_ATTRIBUTES` | `deployment.environment=production,project=solidarytech` |
 
 ---
 
-## 🚢 ArgoCD — GitOps
+## 🔐 Secrets e Variáveis do GitHub
 
-O ArgoCD é instalado via Terraform (`module.gitops`) e monitorado o repositório:
+Configure em: **repositório → Settings → Secrets and variables → Actions**
 
-```
-https://github.com/dsrdantas/hackathon-DCLT (branch: main)
-```
+### 🔑 Repository Secrets (Settings → Secrets → Actions → New repository secret)
 
-### AppProject: `solidarytech`
+Valores sensíveis que nunca aparecem em logs.
 
-Define os limites de acesso das Applications:
-- **sourceRepos**: apenas o repo acima
-- **destinations**: namespaces `ngo`, `donation`, `volunteer`
-- **syncPolicy**: automático com prune + selfHeal
+#### Credenciais AWS Academy (renovar a cada ~4h)
 
-### Applications
-
-| Application | Namespace | Path no repo |
+| Secret | Exemplo | Obter em |
 |---|---|---|
-| `ngo-service` | `ngo` | `gitops/ngo-service/` |
-| `donation-service` | `donation` | `gitops/donation-service/` |
-| `volunteer-service` | `volunteer` | `gitops/volunteer-service/` |
+| `AWS_ACCESS_KEY_ID` | `ASIA...` | AWS Academy → AWS Details → Show |
+| `AWS_SECRET_ACCESS_KEY` | `wJalr...` | AWS Academy → AWS Details → Show |
+| `AWS_SESSION_TOKEN` | `IQoJb3Jp...` (longo) | AWS Academy → AWS Details → Show |
 
-### Comandos úteis do ArgoCD
+#### Credenciais AWS permanentes
+
+| Secret | Exemplo | Descrição |
+|---|---|---|
+| `AWS_ACCOUNT_ID` | `123456789012` | ID da conta AWS (12 dígitos, sem hifens) |
+
+#### GitHub
+
+| Secret | Como criar | Descrição |
+|---|---|---|
+| `GIT_TOKEN` | GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens | PAT com permissão **Contents: Read and write** neste repositório. Necessário para o job `update-manifest` fazer push no `deployment.yaml`. |
+
+#### Infraestrutura
+
+| Secret | Exemplo | Descrição |
+|---|---|---|
+| `RDS_PASSWORD` | `MinhaS3nha!Segura` | Senha do usuário `tc5` no PostgreSQL. Usada pelo Terraform para criar o RDS e popular o Secrets Manager. Escolha uma senha forte. |
+
+#### Observabilidade (opcional)
+
+| Secret | Como obter | Descrição |
+|---|---|---|
+| `NEW_RELIC_LICENSE_KEY` | New Relic → API Keys → Create key (tipo **INGEST - LICENSE**) | Chave de ingestão do New Relic. Sem ela, o OTel Collector funciona apenas com Prometheus/Grafana local. |
+
+---
+
+### 📋 Checklist de criação dos secrets
+
+```
+GitHub → Settings → Secrets and variables → Actions → Secrets
+
+□ AWS_ACCESS_KEY_ID       (temporário — atualizar a cada sessão Academy)
+□ AWS_SECRET_ACCESS_KEY   (temporário — atualizar a cada sessão Academy)
+□ AWS_SESSION_TOKEN       (temporário — atualizar a cada sessão Academy)
+□ AWS_ACCOUNT_ID          (permanente — ID da sua conta AWS)
+□ GIT_TOKEN               (permanente — PAT com Contents: write)
+□ RDS_PASSWORD            (permanente — senha do PostgreSQL)
+□ NEW_RELIC_LICENSE_KEY   (opcional  — chave de ingestão New Relic)
+```
+
+> **Dica:** use o [GitHub CLI](https://cli.github.com/) para criar todos de uma vez:
+> ```bash
+> gh secret set AWS_ACCESS_KEY_ID     --body "ASIA..."
+> gh secret set AWS_SECRET_ACCESS_KEY --body "wJalr..."
+> gh secret set AWS_SESSION_TOKEN     --body "IQoJb3Jp..."
+> gh secret set AWS_ACCOUNT_ID        --body "123456789012"
+> gh secret set GIT_TOKEN             --body "github_pat_..."
+> gh secret set RDS_PASSWORD          --body "MinhaS3nha!"
+> gh secret set NEW_RELIC_LICENSE_KEY --body "eu01xx..."  # opcional
+> ```
+
+---
+
+## 🔑 Credenciais AWS Academy
+
+> ⚠️ O AWS Academy emite credenciais **temporárias com validade de ~4 horas**.  
+> Sempre que a sessão expirar, repita o processo abaixo.
+
+### Como obter as credenciais
+
+1. Acesse o **AWS Academy Learner Lab**
+2. Clique em **Start Lab** (aguarde ficar verde)
+3. Clique em **AWS Details**
+4. Clique em **Show** ao lado de *AWS CLI*
+5. Copie os valores de:
+   - `aws_access_key_id`
+   - `aws_secret_access_key`
+   - `aws_session_token`
+
+### Como atualizar
+
+**Passo 1 — Atualizar os 3 secrets no GitHub:**
 
 ```bash
-# Obter senha do admin
-kubectl get secret argocd-initial-admin-secret \
-  -n argocd -o jsonpath='{.data.password}' | base64 -d
+gh secret set AWS_ACCESS_KEY_ID     --body "<valor copiado>"
+gh secret set AWS_SECRET_ACCESS_KEY --body "<valor copiado>"
+gh secret set AWS_SESSION_TOKEN     --body "<valor copiado>"
+```
 
-# Port-forward para acessar a UI
-kubectl port-forward svc/argocd-server -n argocd 8080:80
+**Passo 2 — Executar o workflow de atualização:**
 
-# Forçar sync manual
-argocd app sync ngo-service --prune
+```bash
+gh workflow run update-aws-credentials.yml
+# ou: GitHub → Actions → "Update AWS Academy Credentials" → Run workflow
+```
 
-# Verificar status
-argocd app list
+Esse workflow:
+- Valida as credenciais
+- Atualiza o K8s Secret `aws-academy-credentials` no cluster
+- Força o ESO a re-sincronizar todos os ExternalSecrets
+- O Stakater Reloader detecta a mudança e reinicia os Deployments automaticamente
+
+---
+
+## 🐳 Executando Localmente
+
+### Pré-requisitos
+
+| Ferramenta | Versão mínima |
+|---|---|
+| Docker | 24+ |
+| Docker Compose v2 | qualquer |
+
+### Subir a stack completa
+
+```bash
+# Construir imagens e subir todos os containers
+docker compose up --build
+
+# Em background
+docker compose up --build -d
+```
+
+### Serviços e portas locais
+
+| Container | URL | Tecnologia |
+|---|---|---|
+| `tc5-postgres` | `localhost:5432` | PostgreSQL 16 |
+| `tc5-localstack` | `localhost:4566` | AWS DynamoDB + SQS simulados |
+| `tc5-ngo-service` | http://localhost:8081 | Python / Flask |
+| `tc5-donation-service` | http://localhost:8082 | Go |
+| `tc5-volunteer-service` | http://localhost:8083 | Python / Flask |
+
+> Em ambiente local, o OTel Collector não está disponível.  
+> Os serviços tentam conectar ao endpoint OTel configurado e falham silenciosamente — o serviço continua funcionando normalmente.
+
+### Variáveis de ambiente locais (Docker Compose)
+
+#### donation-service
+> ⚠️ A variável de ambiente correta é `SQS_QUEUE_URL` (não `AWS_SQS_URL`).
+
+| Variável | Valor local |
+|---|---|
+| `PORT` | `8082` |
+| `DATABASE_URL` | `postgres://tc5:supersenha@postgres:5432/donation_db` |
+| `AWS_REGION` | `us-east-1` |
+| `SQS_QUEUE_URL` | `http://localstack:4566/000000000000/solidary-donations` |
+| `AWS_ENDPOINT_URL` | `http://localstack:4566` |
+
+#### volunteer-service
+> ⚠️ A variável de ambiente correta é `DYNAMODB_TABLE` (não `AWS_DYNAMODB_TABLE`).
+
+| Variável | Valor local |
+|---|---|
+| `PORT` | `8083` |
+| `AWS_REGION` | `us-east-1` |
+| `DYNAMODB_TABLE` | `SolidaryTechVolunteers` |
+| `AWS_ENDPOINT_URL` | `http://localstack:4566` |
+
+### Testando os endpoints
+
+```bash
+# Health checks
+curl http://localhost:8081/health
+curl http://localhost:8082/health
+curl http://localhost:8083/health
+
+# Criar ONG
+curl -s -X POST http://localhost:8081/ngos \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Instituto Esperança","email":"contato@esperanca.org","cause":"Educação","city":"São Paulo"}' | jq .
+
+# Criar doação
+curl -s -X POST http://localhost:8082/donations \
+  -H "Content-Type: application/json" \
+  -d '{"ngo_id":1,"amount":150.00,"donor_name":"Maria Silva"}' | jq .
+
+# Registrar voluntário
+curl -s -X POST http://localhost:8083/volunteers \
+  -H "Content-Type: application/json" \
+  -d '{"name":"João Souza","email":"joao@email.com","ngo_id":1}' | jq .
+
+# Buscar voluntários de uma ONG
+curl -s http://localhost:8083/volunteers/1 | jq .
+```
+
+### Comandos úteis
+
+```bash
+docker compose logs -f                        # todos os serviços
+docker compose logs -f donation-service       # serviço específico
+docker compose ps                             # status dos containers
+docker compose down -v                        # parar e apagar dados
+docker compose build ngo-service              # reconstruir imagem específica
 ```
 
 ---
 
-## 🌐 Traefik — Ingress Controller
+## 🚀 Primeiro Deploy em Produção
 
-O Traefik é instalado via Helm com um **LoadBalancer** AWS NLB. As rotas são:
+### Pré-requisitos
 
-| Serviço | Rota | Porta interna |
-|---|---|---|
-| ngo-service | `http://<lb>/ngo/` | 8081 |
-| donation-service | `http://<lb>/donation/` | 8082 |
-| volunteer-service | `http://<lb>/volunteer/` | 8083 |
+- [ ] Todos os [Secrets do GitHub](#-secrets-e-variáveis-do-github) configurados
+- [ ] AWS Academy com sessão ativa e credenciais no GitHub
+- [ ] Terraform instalado (>= 1.5)
+- [ ] AWS CLI configurado localmente com as credenciais Academy
+- [ ] kubectl instalado
 
-Para obter o hostname do LoadBalancer:
+### Passo 1 — Inicializar backend do Terraform
 
 ```bash
+cd terraform
+
+# Criar S3 bucket e tabela DynamoDB para o estado
+bash scripts/init-backend.sh
+
+terraform init
+```
+
+### Passo 2 — Criar VPC e EKS primeiro
+
+```bash
+terraform apply -target=module.vpc -target=module.eks
+# Aguarde ~15 minutos para o cluster EKS ficar pronto
+```
+
+### Passo 3 — Aplicar toda a infraestrutura
+
+```bash
+terraform apply
+# Cria RDS, ElastiCache, SQS, DynamoDB, Secrets Manager,
+# ECR, ArgoCD, Traefik, ESO, Reloader, Prometheus, OTel Collector
+# e executa o bootstrap do ArgoCD (aplica gitops/argocd-apps.yaml)
+```
+
+### Passo 4 — Injetar credenciais AWS no cluster
+
+```bash
+gh workflow run update-aws-credentials.yml
+# Aguarde o workflow finalizar (cria aws-academy-credentials + new-relic-credentials)
+```
+
+### Passo 5 — Aguardar ESO sincronizar os Secrets
+
+```bash
+kubectl get externalsecret -A   # deve mostrar "SecretSynced"
+kubectl get secret ngo-service-secrets -n ngo
+kubectl get secret donation-service-secrets -n donation
+kubectl get secret volunteer-service-secrets -n volunteer
+```
+
+### Passo 6 — Primeiro push para disparar os pipelines CI/CD
+
+```bash
+# Qualquer mudança em um serviço dispara o pipeline
+git commit --allow-empty -m "ci: trigger initial deploy"
+git push origin main
+```
+
+### Passo 7 — Verificar deploy
+
+```bash
+# Obter endpoint do LoadBalancer
 kubectl get svc traefik -n traefik \
   -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+
+# Testar health check via Traefik
+LB="<hostname acima>"
+curl http://$LB/ngo/health
+curl http://$LB/donation/health
+curl http://$LB/volunteer/health
 ```
 
 ---
 
 ## 📦 Repositórios ECR
 
-Criados automaticamente pelo Terraform (`module.gitops`):
+Criados automaticamente pelo Terraform:
 
-| Repositório | Lifecycle Policy |
+| Repositório | Retenção |
 |---|---|
 | `solidarytech-prod-ngo-service` | Últimas 10 imagens |
 | `solidarytech-prod-donation-service` | Últimas 10 imagens |
@@ -879,69 +740,42 @@ Scan automático de vulnerabilidades a cada push (`scan_on_push = true`).
 
 ---
 
-## 🔁 Fluxo Completo de Deploy
+## 🔧 Correções e Ajustes Realizados
 
-```
-1. Developer faz push para main (com mudança em <service>/)
-        ↓
-2. GitHub Actions dispara o workflow do serviço
-        ↓
-3. test → security-scan (Bandit/govulncheck + Trivy)
-        ↓
-4. build-push: imagem linux/amd64 → ECR
-               tag: <run>-<sha>
-        ↓
-5. update-manifest: sed atualiza deployment.yaml
-                    git commit + push [skip ci]
-        ↓
-6. ArgoCD detecta mudança no repo (polling 3min ou webhook)
-        ↓
-7. ArgoCD aplica o manifesto atualizado no EKS
-        ↓
-8. Kubernetes faz RollingUpdate (maxSurge=1, maxUnavailable=0)
-        ↓
-9. HPA monitora CPU/memória → escala de 1 a 3 réplicas
-```
+### Variáveis de ambiente corrigidas
 
----
+| Serviço | Variável antiga (incorreta) | Variável correta |
+|---|---|---|
+| `volunteer-service` | `AWS_DYNAMODB_TABLE` | `DYNAMODB_TABLE` |
+| `donation-service` | `AWS_SQS_URL` | `SQS_QUEUE_URL` |
 
-## 🛠️ Primeiro Deploy (Ambiente Novo)
+### Dependências do donation-service atualizadas (CVEs)
 
-```bash
-# 1. Criar recursos base primeiro (cluster EKS)
-cd terraform
-terraform apply -target=module.vpc -target=module.eks
+| Pacote | Versão anterior | Versão atual | CVEs corrigidos |
+|---|---|---|---|
+| `go.opentelemetry.io/otel/sdk` | v1.28.0 | **v1.43.0** | CVE-2026-24051, CVE-2026-39883 (HIGH) |
+| `golang.org/x/crypto` | v0.24.0 | **v0.49.0** | CVE-2024-45337 (CRITICAL), CVE-2025-22869 (HIGH) |
+| `google.golang.org/grpc` | v1.64.0 | **v1.80.0** | CVE-2026-33186 (CRITICAL) |
+| `golang.org/x/net` | v0.26.0 | **v0.52.0** | CVE-2026-4918 (HIGH) |
+| Go runtime | 1.21 | **1.25** | CVEs do stdlib (x509, crypto/tls, net/url, database/sql) |
 
-# 2. Aplicar toda a infraestrutura (ArgoCD, Traefik, ECR, etc.)
-terraform apply
+### Security scan — comportamento por tipo de scan
 
-# 3. O bootstrap do ArgoCD aplica gitops/argocd-apps.yaml automaticamente
-
-# 4. Configurar as Secrets no Kubernetes (valores reais pós terraform apply)
-kubectl create secret generic ngo-service-secrets \
-  --from-literal=database-url="postgres://tc5:<senha>@<rds-endpoint>:5432/ngo_db" \
-  -n ngo
-
-kubectl create secret generic donation-service-secrets \
-  --from-literal=database-url="postgres://tc5:<senha>@<rds-endpoint>:5432/donation_db" \
-  -n donation
-
-# 5. Fazer o primeiro push para disparar os pipelines
-git push origin main
-```
+| Scan | exit-code | Comportamento |
+|---|---|---|
+| Trivy `fs` (source) | `1` | Bloqueia pipeline se encontrar CRITICAL/HIGH **com fix disponível** |
+| Trivy `image` (ECR) | `1` | Bloqueia pipeline se imagem publicada tiver CRITICAL/HIGH com fix |
+| govulncheck | informativo | Reporta tudo incluindo CVEs sem fix — não bloqueia (ex: pgproto3/v2) |
+| Bandit (Python) | `1` para HIGH | Bloqueia em findings de alta severidade e alta confiança |
 
 ---
 
-# 🤝 Contribuição
+## 🤝 Contribuição
 
-Este projeto foi criado exclusivamente para fins educacionais e execução do Hackathon Fase 5.
-
-Sinta-se livre para evoluir a arquitetura, melhorar a observabilidade e implementar boas práticas de engenharia de plataforma.
+Projeto criado para fins educacionais — Hackathon FIAP TC5.
 
 ---
 
-# 🏁 Boa sorte!
+## 🏁 Boa sorte!
 
-Bom Hackathon 🚀
-
-Faça a diferença com a **SolidaryTech** 💙
+Bom Hackathon 🚀 — Faça a diferença com a **SolidaryTech** 💙
