@@ -166,6 +166,7 @@ jobs:
         id: plan
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
+          set -o pipefail
           terraform plan \
             -var="rds_password=${{ secrets.RDS_PASSWORD }}" \
             -out=tfplan \
@@ -196,6 +197,7 @@ jobs:
           name: tfplan
           path: ${{ env.TF_WORKING_DIR }}/tfplan
           retention-days: 1
+          if-no-files-found: error
 
   # ── Job 3: Terraform Apply (manual / main only) ───────────────
   apply:
@@ -225,12 +227,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ env.AWS_REGION }}
-
-      - name: Download plan artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: tfplan
-          path: ${{ env.TF_WORKING_DIR }}
 
       - name: Bootstrap backend (S3 + DynamoDB)
         run: |
@@ -265,6 +261,14 @@ jobs:
       - name: terraform init
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init
+
+      # Download AFTER init: the plan binary must match the provider versions
+      # installed by init in this job's runner
+      - name: Download plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ env.TF_WORKING_DIR }}
 
       - name: terraform apply
         working-directory: ${{ env.TF_WORKING_DIR }}
