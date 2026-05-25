@@ -35,10 +35,11 @@ on:
       - ".github/workflows/ngo-service.yml"
 
 env:
-  AWS_REGION: us-east-1
-  ECR_REPO: solidarytech-prod-ngo-service
-  SERVICE_DIR: ngo-service
+  AWS_REGION:      us-east-1
+  ECR_REPO:        solidarytech-prod-ngo-service
+  SERVICE_DIR:     ngo-service
   GITOPS_MANIFEST: gitops/ngo-service/deployment.yaml
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   # ── Job 1: Testes unitários ───────────────────────────────────
@@ -114,11 +115,12 @@ jobs:
       - name: Trivy — scan no Dockerfile e dependências
         uses: aquasecurity/trivy-action@master
         with:
-          scan-type: fs
-          scan-ref: ${{ env.SERVICE_DIR }}/
-          format: table
-          exit-code: "1"
-          severity: CRITICAL,HIGH
+          scan-type:      fs
+          scan-ref:       ${{ env.SERVICE_DIR }}/
+          format:         table
+          # exit-code "0": fs scan é informativo; o gate real é o scan da imagem publicada
+          exit-code:      "0"
+          severity:       CRITICAL,HIGH
           ignore-unfixed: true
 
   # ── Job 3: Build e Push para ECR ─────────────────────────────
@@ -172,13 +174,15 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Trivy — scan na imagem publicada
+      - name: Trivy — scan na imagem publicada (gate de segurança)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: "${{ steps.meta.outputs.uri }}:${{ steps.meta.outputs.tag }}"
-          format: sarif
-          output: trivy-image.sarif
-          severity: CRITICAL,HIGH
+          image-ref:      "${{ steps.meta.outputs.uri }}:${{ steps.meta.outputs.tag }}"
+          format:         sarif
+          output:         trivy-image.sarif
+          # exit-code "1": imagem publicada DEVE passar sem CRITICAL/HIGH
+          exit-code:      "1"
+          severity:       CRITICAL,HIGH
           ignore-unfixed: true
 
       - name: Upload Trivy SARIF
