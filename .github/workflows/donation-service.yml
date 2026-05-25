@@ -1,0 +1,223 @@
+# ════════════════════════════════════════════════════════════════
+# .github/workflows/donation-service.yml
+#
+# CI/CD pipeline para o donation-service (Go)
+#
+# Jobs:
+#   1. test          — go test + go vet
+#   2. security-scan — govulncheck (SAST) + Trivy
+#   3. build-push    — build amd64 + push para ECR
+#   4. update-manifest — atualiza a tag no gitops/donation-service/deployment.yaml
+#
+# Secrets necessários:
+#   AWS_ACCESS_KEY_ID      — credencial temporária do AWS Academy
+#   AWS_SECRET_ACCESS_KEY  — credencial temporária do AWS Academy
+#   AWS_SESSION_TOKEN      — token de sessão do AWS Academy (obrigatório!)
+#   AWS_ACCOUNT_ID         — ID da conta AWS (12 dígitos)
+#   GIT_TOKEN              — PAT com escopo repo para push nos manifestos
+#
+# ⚠️  AWS Academy emite credenciais temporárias (~4h). Atualize os três
+#     secrets acima a cada sessão em: Settings → Secrets → Actions
+# ════════════════════════════════════════════════════════════════
+
+name: donation-service CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "donation-service/**"
+      - ".github/workflows/donation-service.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "donation-service/**"
+      - ".github/workflows/donation-service.yml"
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: solidarytech-prod-donation-service
+  SERVICE_DIR: donation-service
+  GITOPS_MANIFEST: gitops/donation-service/deployment.yaml
+  GO_VERSION: "1.21"
+
+jobs:
+  # ── Job 1: Testes unitários Go ────────────────────────────────
+  test:
+    name: "Test (Go)"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: donation-service
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go ${{ env.GO_VERSION }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: donation-service/go.sum
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: |
+          if find . -name "*_test.go" | grep -q .; then
+            go test -v -race -count=1 ./...
+          else
+            echo "Sem arquivos de teste; executando apenas go build..."
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /dev/null .
+          fi
+
+  # ── Job 2: Security Scan ──────────────────────────────────────
+  security-scan:
+    name: "Security Scan"
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go ${{ env.GO_VERSION }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: govulncheck — análise de vulnerabilidades em dependências Go
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          cd ${{ env.SERVICE_DIR }}
+          govulncheck ./... || echo "⚠️ Vulnerabilidades encontradas (não bloqueante)"
+
+      - name: Trivy — scan no código-fonte e dependências Go
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: ${{ env.SERVICE_DIR }}/
+          format: table
+          exit-code: "1"
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+  # ── Job 3: Build e Push para ECR ─────────────────────────────
+  build-push:
+    name: "Build & Push ECR"
+    runs-on: ubuntu-latest
+    needs: security-scan
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+      image_uri: ${{ steps.meta.outputs.uri }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (AWS Academy)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login no ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Definir tag e URI da imagem
+        id: meta
+        run: |
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+          TAG="${{ github.run_number }}-${SHORT_SHA}"
+          URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "uri=${URI}" >> $GITHUB_OUTPUT
+          echo "📦 Imagem: ${URI}:${TAG}"
+
+      - name: Setup QEMU (para cross-compile amd64 se necessário)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build e Push imagem Docker (amd64)
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ env.SERVICE_DIR }}
+          file: ${{ env.SERVICE_DIR }}/Dockerfile
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            TARGETOS=linux
+            TARGETARCH=amd64
+          tags: |
+            ${{ steps.meta.outputs.uri }}:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.uri }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy — scan na imagem publicada
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ steps.meta.outputs.uri }}:${{ steps.meta.outputs.tag }}"
+          format: sarif
+          output: trivy-image.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-donation-service
+
+  # ── Job 4: Atualizar manifesto GitOps ────────────────────────
+  update-manifest:
+    name: "Update GitOps Manifest"
+    runs-on: ubuntu-latest
+    needs: build-push
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GIT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Atualizar tag no deployment.yaml
+        env:
+          IMAGE_TAG: ${{ needs.build-push.outputs.image_tag }}
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+        run: |
+          NEW_IMAGE="${AWS_ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:${IMAGE_TAG}"
+          echo "🔄 Atualizando imagem para: ${NEW_IMAGE}"
+
+          sed -i "s|.*solidarytech-prod-donation-service:.*|          image: ${NEW_IMAGE}|g" \
+            ${{ env.GITOPS_MANIFEST }}
+
+          sed -i "s|app.kubernetes.io/version: .*|app.kubernetes.io/version: \"${IMAGE_TAG}\"|g" \
+            ${{ env.GITOPS_MANIFEST }}
+
+      - name: Commit e Push manifesto atualizado
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ${{ env.GITOPS_MANIFEST }}
+
+          if git diff --staged --quiet; then
+            echo "Nenhuma alteração no manifesto; pulando commit."
+          else
+            git commit -m "ci(donation-service): update image tag to ${{ needs.build-push.outputs.image_tag }} [skip ci]"
+            git push
+          fi

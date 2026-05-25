@@ -1,0 +1,10 @@
+# ════════════════════════════════════════════════════════════════
+# DEPRECATED — IngressRoute e Middleware do volunteer-service foram
+# migrados para gitops/traefik/ingressroutes.yaml e middlewares.yaml
+#
+# O ArgoCD (prune: true) removerá automaticamente do cluster:
+#   - IngressRoute "volunteer-service"    (namespace: volunteer)
+#   - Middleware   "strip-volunteer-prefix" (namespace: volunteer)
+#
+# As rotas agora ficam centralizadas no namespace "traefik".
+# ════════════════════════════════════════════════════════════════

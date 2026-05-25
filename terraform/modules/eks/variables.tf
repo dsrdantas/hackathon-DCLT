@@ -1,0 +1,9 @@
+variable "project_name"           { type = string }
+variable "environment"             { type = string }
+variable "eks_version"             { type = string }
+variable "vpc_id"                  { type = string }
+variable "subnet_ids"              { type = list(string) }
+variable "eks_node_instance_type"  { type = string }
+variable "eks_min_nodes"           { type = number }
+variable "eks_max_nodes"           { type = number }
+variable "eks_desired_nodes"       { type = number }

@@ -1,0 +1,89 @@
+# ════════════════════════════════════════════════════════════════
+# gitops/traefik/middlewares.yaml
+#
+# Middlewares do Traefik — StripPrefix por serviço
+#
+# Todos os Middlewares ficam no namespace "traefik" junto com o
+# Ingress Controller. As IngressRoutes (mesmo namespace) os
+# referenciam diretamente pelo nome.
+#
+# Efeito: remove o prefixo do path antes de encaminhar ao serviço.
+#   /ngo/health  →  /health   (recebido pelo ngo-service)
+#   /donation/   →  /         (recebido pelo donation-service)
+#   /volunteer/  →  /         (recebido pelo volunteer-service)
+# ════════════════════════════════════════════════════════════════
+
+# ── ngo-service ───────────────────────────────────────────────
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-ngo
+  namespace: traefik
+  labels:
+    app.kubernetes.io/part-of: solidarytech
+    app.kubernetes.io/managed-by: argocd
+spec:
+  stripPrefix:
+    prefixes:
+      - /ngo
+    forceSlash: false
+
+---
+# ── donation-service ──────────────────────────────────────────
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-donation
+  namespace: traefik
+  labels:
+    app.kubernetes.io/part-of: solidarytech
+    app.kubernetes.io/managed-by: argocd
+spec:
+  stripPrefix:
+    prefixes:
+      - /donation
+    forceSlash: false
+
+---
+# ── volunteer-service ─────────────────────────────────────────
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-volunteer
+  namespace: traefik
+  labels:
+    app.kubernetes.io/part-of: solidarytech
+    app.kubernetes.io/managed-by: argocd
+spec:
+  stripPrefix:
+    prefixes:
+      - /volunteer
+    forceSlash: false
+
+---
+# ── headers de segurança (aplicados a todas as rotas) ─────────
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: secure-headers
+  namespace: traefik
+  labels:
+    app.kubernetes.io/part-of: solidarytech
+    app.kubernetes.io/managed-by: argocd
+spec:
+  headers:
+    customResponseHeaders:
+      X-Content-Type-Options: "nosniff"
+      X-Frame-Options: "DENY"
+      X-XSS-Protection: "1; mode=block"
+    accessControlAllowOriginList:
+      - "*"
+    accessControlAllowMethods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    accessControlAllowHeaders:
+      - "Content-Type"
+      - "Authorization"

@@ -1,0 +1,120 @@
+version: '3.8'
+
+services:
+
+  # ─────────────────────────────────────────────
+  # PostgreSQL — ngo_db + donation_db
+  # ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: tc5-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tc5
+      POSTGRES_PASSWORD: supersenha
+      POSTGRES_DB: ngo_db          # banco principal criado pelo Postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/postgres/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+      - ./ngo-service/db/init.sql:/docker-entrypoint-initdb.d/ngo-init.sql:ro
+      - ./donation-service/db/init.sql:/docker-entrypoint-initdb.d/donation-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tc5 -d ngo_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────────
+  # ngo-service — API Flask (porta 8081)
+  # ─────────────────────────────────────────────
+  ngo-service:
+    build:
+      context: ./ngo-service
+      dockerfile: Dockerfile
+    container_name: tc5-ngo-service
+    restart: unless-stopped
+    environment:
+      PORT: 8081
+      DATABASE_URL: "postgres://tc5:supersenha@postgres:5432/ngo_db"
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────
+  # donation-service — API Go (porta 8082)
+  # ─────────────────────────────────────────────
+  donation-service:
+    build:
+      context: ./donation-service
+      dockerfile: Dockerfile
+    container_name: tc5-donation-service
+    restart: unless-stopped
+    environment:
+      PORT: 8082
+      DATABASE_URL: "postgres://tc5:supersenha@postgres:5432/donation_db"
+      AWS_REGION: "us-east-1"
+      AWS_ACCESS_KEY_ID: "test"
+      AWS_SECRET_ACCESS_KEY: "test"
+      AWS_ENDPOINT_URL: "http://localstack:4566"
+      AWS_SQS_URL: "http://localstack:4566/000000000000/solidary-donations"
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────
+  # volunteer-service — API Flask (porta 8083)
+  # ─────────────────────────────────────────────
+  volunteer-service:
+    build:
+      context: ./volunteer-service
+      dockerfile: Dockerfile
+    container_name: tc5-volunteer-service
+    restart: unless-stopped
+    environment:
+      PORT: 8083
+      AWS_REGION: "us-east-1"
+      AWS_ACCESS_KEY_ID: "test"
+      AWS_SECRET_ACCESS_KEY: "test"
+      AWS_ENDPOINT_URL: "http://localstack:4566"
+      AWS_DYNAMODB_TABLE: "SolidaryTechVolunteers"
+    ports:
+      - "8083:8083"
+    depends_on:
+      localstack:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────
+  # LocalStack — DynamoDB + SQS
+  # ─────────────────────────────────────────────
+  localstack:
+    image: localstack/localstack:3
+    container_name: tc5-localstack
+    restart: unless-stopped
+    environment:
+      - SERVICES=dynamodb,sqs
+      - DEFAULT_REGION=us-east-1
+      - AWS_DEFAULT_REGION=us-east-1
+      - LOCALSTACK_HOST=localhost
+    ports:
+      - "4566:4566"
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - ./scripts/localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "awslocal sqs list-queues && awslocal dynamodb list-tables"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  postgres_data:
+  localstack_data:

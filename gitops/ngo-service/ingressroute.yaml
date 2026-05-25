@@ -1,0 +1,10 @@
+# ════════════════════════════════════════════════════════════════
+# DEPRECATED — IngressRoute e Middleware do ngo-service foram
+# migrados para gitops/traefik/ingressroutes.yaml e middlewares.yaml
+#
+# O ArgoCD (prune: true) removerá automaticamente do cluster:
+#   - IngressRoute "ngo-service"    (namespace: ngo)
+#   - Middleware   "strip-ngo-prefix" (namespace: ngo)
+#
+# As rotas agora ficam centralizadas no namespace "traefik".
+# ════════════════════════════════════════════════════════════════

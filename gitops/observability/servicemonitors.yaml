@@ -1,0 +1,99 @@
+# ════════════════════════════════════════════════════════════════
+# gitops/observability/servicemonitors.yaml
+#
+# ServiceMonitors para o Prometheus (kube-prometheus-stack) scrape:
+#   1. OTel Collector — porta 8889 (métricas no formato Prometheus)
+#   2. Microserviços   — porta de cada serviço via anotações prometheus.io
+#
+# O Prometheus descobre estes objetos porque foi configurado com:
+#   serviceMonitorSelectorNilUsesHelmValues: false
+#   serviceMonitorNamespaceSelector: {}   ← todos os namespaces
+# ════════════════════════════════════════════════════════════════
+
+# ── ServiceMonitor: OpenTelemetry Collector ───────────────────
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: otel-collector
+  namespace: observability
+  labels:
+    app: otel-collector
+    release: kube-prometheus-stack   # label que o Prometheus operator procura
+spec:
+  namespaceSelector:
+    matchNames:
+      - observability
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opentelemetry-collector
+  endpoints:
+    - port: prometheus              # porta 8889 exposta no Helm do otel-collector
+      path: /metrics
+      interval: 30s
+      scheme: http
+
+---
+# ── ServiceMonitor: ngo-service ───────────────────────────────
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ngo-service
+  namespace: ngo
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - ngo
+  selector:
+    matchLabels:
+      app: ngo-service
+  endpoints:
+    - port: http
+      path: /health        # endpoint de healthcheck também expõe métricas básicas
+      interval: 30s
+      scheme: http
+
+---
+# ── ServiceMonitor: donation-service ─────────────────────────
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: donation-service
+  namespace: donation
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - donation
+  selector:
+    matchLabels:
+      app: donation-service
+  endpoints:
+    - port: http
+      path: /health
+      interval: 30s
+      scheme: http
+
+---
+# ── ServiceMonitor: volunteer-service ────────────────────────
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: volunteer-service
+  namespace: volunteer
+  labels:
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - volunteer
+  selector:
+    matchLabels:
+      app: volunteer-service
+  endpoints:
+    - port: http
+      path: /health
+      interval: 30s
+      scheme: http

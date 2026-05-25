@@ -1,0 +1,265 @@
+# ════════════════════════════════════════════════════════════════
+# gitops/observability/grafana-dashboard.yaml
+#
+# ConfigMap com dashboard JSON importado automaticamente pelo
+# Grafana sidecar (label grafana_dashboard: "1").
+#
+# Painéis incluídos:
+#   • Taxa de requisições HTTP por serviço
+#   • Taxa de erros HTTP por serviço
+#   • Latência P95 por serviço (OTLP → Prometheus)
+#   • Reinicializações de pods (via kube-state-metrics)
+#   • Uso de memória por pod
+# ════════════════════════════════════════════════════════════════
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: solidarytech-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"         # sidecar do Grafana importa automaticamente
+    app.kubernetes.io/part-of: solidarytech
+data:
+  solidarytech-overview.json: |
+    {
+      "__inputs": [],
+      "__requires": [
+        { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+        { "type": "datasource", "id": "prometheus", "name": "Prometheus", "version": "1.0.0" }
+      ],
+      "annotations": { "list": [] },
+      "description": "SolidaryTech — Visão geral dos microserviços",
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 100,
+          "title": "HTTP — Taxa de Requisições",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": { "lineWidth": 2 },
+              "unit": "reqps"
+            }
+          },
+          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
+          "id": 1,
+          "options": { "legend": { "displayMode": "list" }, "tooltip": { "mode": "multi" } },
+          "targets": [
+            {
+              "expr": "sum(rate(solidarytech_http_server_duration_milliseconds_count{service_name=\"ngo-service\"}[2m]))",
+              "legendFormat": "ngo-service"
+            }
+          ],
+          "title": "ngo-service — req/s",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": { "lineWidth": 2 },
+              "unit": "reqps"
+            }
+          },
+          "gridPos": { "h": 8, "w": 8, "x": 8, "y": 1 },
+          "id": 2,
+          "targets": [
+            {
+              "expr": "sum(rate(solidarytech_http_server_duration_milliseconds_count{service_name=\"donation-service\"}[2m]))",
+              "legendFormat": "donation-service"
+            }
+          ],
+          "title": "donation-service — req/s",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": { "lineWidth": 2 },
+              "unit": "reqps"
+            }
+          },
+          "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
+          "id": 3,
+          "targets": [
+            {
+              "expr": "sum(rate(solidarytech_http_server_duration_milliseconds_count{service_name=\"volunteer-service\"}[2m]))",
+              "legendFormat": "volunteer-service"
+            }
+          ],
+          "title": "volunteer-service — req/s",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+          "id": 101,
+          "title": "HTTP — Latência P95 (ms)",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": { "lineWidth": 2 },
+              "unit": "ms",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 500 },
+                  { "color": "red", "value": 1000 }
+                ]
+              }
+            }
+          },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 10 },
+          "id": 4,
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (le, service_name) (rate(solidarytech_http_server_duration_milliseconds_bucket[5m])))",
+              "legendFormat": "P95 — {{service_name}}"
+            },
+            {
+              "expr": "histogram_quantile(0.50, sum by (le, service_name) (rate(solidarytech_http_server_duration_milliseconds_bucket[5m])))",
+              "legendFormat": "P50 — {{service_name}}"
+            }
+          ],
+          "title": "Latência HTTP — P50 e P95 por serviço",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+          "id": 102,
+          "title": "Métricas de Negócio",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": {
+            "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" }
+          },
+          "gridPos": { "h": 6, "w": 8, "x": 0, "y": 19 },
+          "id": 5,
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background" },
+          "targets": [
+            { "expr": "sum(increase(solidarytech_ngo_created_total[1h]))", "legendFormat": "ONGs criadas (1h)" }
+          ],
+          "title": "ONGs Criadas (última hora)",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": {
+            "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" }
+          },
+          "gridPos": { "h": 6, "w": 8, "x": 8, "y": 19 },
+          "id": 6,
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background" },
+          "targets": [
+            { "expr": "sum(increase(solidarytech_donation_created_total[1h]))", "legendFormat": "Doações criadas (1h)" }
+          ],
+          "title": "Doações Criadas (última hora)",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": {
+            "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" }
+          },
+          "gridPos": { "h": 6, "w": 8, "x": 16, "y": 19 },
+          "id": 7,
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background" },
+          "targets": [
+            { "expr": "sum(increase(solidarytech_volunteer_registered_total[1h]))", "legendFormat": "Voluntários registrados (1h)" }
+          ],
+          "title": "Voluntários Registrados (última hora)",
+          "type": "stat"
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
+          "id": 103,
+          "title": "Infraestrutura — Pods",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": { "lineWidth": 2 },
+              "unit": "short"
+            }
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+          "id": 8,
+          "targets": [
+            {
+              "expr": "sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=~\"ngo|donation|volunteer\"}[1h]))",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "title": "Reinicializações de Pods (1h)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": { "lineWidth": 2 },
+              "unit": "bytes"
+            }
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+          "id": 9,
+          "targets": [
+            {
+              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=~\"ngo|donation|volunteer\", container!=\"\"})",
+              "legendFormat": "{{pod}}"
+            }
+          ],
+          "title": "Uso de Memória por Pod",
+          "type": "timeseries"
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 38,
+      "tags": ["solidarytech", "microservices", "opentelemetry"],
+      "templating": {
+        "list": [
+          {
+            "current": {},
+            "hide": 0,
+            "includeAll": false,
+            "name": "datasource",
+            "options": [],
+            "query": "prometheus",
+            "refresh": 1,
+            "type": "datasource"
+          }
+        ]
+      },
+      "time": { "from": "now-3h", "to": "now" },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "SolidaryTech — Visão Geral",
+      "uid": "solidarytech-overview",
+      "version": 1
+    }

@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ngo-service
+  namespace: ngo
+  labels:
+    app: ngo-service
+    app.kubernetes.io/name: ngo-service
+    app.kubernetes.io/part-of: solidarytech
+    app.kubernetes.io/version: latest
+  annotations:
+    # Stakater Reloader: reinicia o Deployment automaticamente
+    # quando o Secret "ngo-service-secrets" for atualizado pelo ESO.
+    secret.reloader.stakater.com/reload: "ngo-service-secrets"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ngo-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: ngo-service
+        app.kubernetes.io/name: ngo-service
+        app.kubernetes.io/part-of: solidarytech
+        app.kubernetes.io/version: latest
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: "/health"
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: ngo-service
+          # ↓ GitHub Actions atualiza esta linha a cada build
+          image: AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/solidarytech-prod-ngo-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8081
+              protocol: TCP
+          env:
+            - name: FLASK_ENV
+              value: "production"
+            - name: PORT
+              value: "8081"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ngo-service-secrets
+                  key: database-url
+            # ── OpenTelemetry ────────────────────────────────
+            - name: OTEL_SERVICE_NAME
+              value: "ngo-service"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.observability:4318"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "http/protobuf"
+            - name: OTEL_TRACES_SAMPLER
+              value: "parentbased_always_on"
+            - name: OTEL_PYTHON_LOG_CORRELATION
+              value: "true"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment=production,project=solidarytech"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL

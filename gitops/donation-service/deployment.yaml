@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: donation-service
+  namespace: donation
+  labels:
+    app: donation-service
+    app.kubernetes.io/name: donation-service
+    app.kubernetes.io/part-of: solidarytech
+    app.kubernetes.io/version: latest
+  annotations:
+    # Stakater Reloader: reinicia o Deployment quando o ESO
+    # atualizar "donation-service-secrets" (database-url ou sqs-queue-url).
+    secret.reloader.stakater.com/reload: "donation-service-secrets"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: donation-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: donation-service
+        app.kubernetes.io/name: donation-service
+        app.kubernetes.io/part-of: solidarytech
+        app.kubernetes.io/version: latest
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8082"
+        prometheus.io/path: "/health"
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534   # nobody (distroless)
+      containers:
+        - name: donation-service
+          # ↓ GitHub Actions atualiza esta linha a cada build
+          image: AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/solidarytech-prod-donation-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8082
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "8082"
+            - name: AWS_REGION
+              value: "us-east-1"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: donation-service-secrets
+                  key: database-url
+            - name: SQS_QUEUE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: donation-service-secrets   # criado pelo ExternalSecret
+                  key: sqs-queue-url
+            # ── OpenTelemetry ────────────────────────────────
+            - name: OTEL_SERVICE_NAME
+              value: "donation-service"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.observability:4318"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "http/protobuf"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment=production,project=solidarytech"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL

@@ -1,0 +1,105 @@
+# ════════════════════════════════════════════════════════════════
+# gitops/traefik/ingressroutes.yaml
+#
+# IngressRoutes centralizadas — todas as rotas da plataforma
+# SolidaryTech gerenciadas em um único manifesto.
+#
+# Namespace: traefik (mesmo do Ingress Controller)
+# Provider:  kubernetesCRD (Traefik lê CRDs nativo)
+#
+# Acesso via LoadBalancer (NLB AWS):
+#   http://<lb-hostname>/ngo/         → ngo-service      (namespace: ngo)
+#   http://<lb-hostname>/donation/    → donation-service (namespace: donation)
+#   http://<lb-hostname>/volunteer/   → volunteer-service(namespace: volunteer)
+#
+# Pré-requisito: allowCrossNamespace: true no Helm do Traefik
+#   (configurado em terraform/modules/gitops/main.tf)
+#
+# Para obter o hostname do LoadBalancer:
+#   kubectl get svc traefik -n traefik \
+#     -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+# ════════════════════════════════════════════════════════════════
+
+# ── HTTP — todas as rotas ─────────────────────────────────────
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: solidarytech-http
+  namespace: traefik
+  labels:
+    app.kubernetes.io/part-of: solidarytech
+    app.kubernetes.io/managed-by: argocd
+    routing: "http"
+spec:
+  entryPoints:
+    - web        # porta 80
+
+  routes:
+
+    # ── /ngo → ngo-service ──────────────────────────────────────
+    - match: PathPrefix(`/ngo`)
+      kind: Rule
+      priority: 10
+      services:
+        - name: ngo-service
+          namespace: ngo     # referência cross-namespace
+          port: 80
+          passHostHeader: true
+      middlewares:
+        - name: strip-ngo       # remove o prefixo /ngo antes de encaminhar
+          namespace: traefik
+        - name: secure-headers
+          namespace: traefik
+
+    # ── /donation → donation-service ────────────────────────────
+    - match: PathPrefix(`/donation`)
+      kind: Rule
+      priority: 10
+      services:
+        - name: donation-service
+          namespace: donation
+          port: 80
+          passHostHeader: true
+      middlewares:
+        - name: strip-donation
+          namespace: traefik
+        - name: secure-headers
+          namespace: traefik
+
+    # ── /volunteer → volunteer-service ──────────────────────────
+    - match: PathPrefix(`/volunteer`)
+      kind: Rule
+      priority: 10
+      services:
+        - name: volunteer-service
+          namespace: volunteer
+          port: 80
+          passHostHeader: true
+      middlewares:
+        - name: strip-volunteer
+          namespace: traefik
+        - name: secure-headers
+          namespace: traefik
+
+---
+# ── Health-check do LoadBalancer ──────────────────────────────
+# Rota dedicada para o NLB verificar a saúde do Traefik.
+# Retorna 200 diretamente do Traefik (ping built-in).
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: traefik-ping
+  namespace: traefik
+  labels:
+    app.kubernetes.io/part-of: solidarytech
+    app.kubernetes.io/managed-by: argocd
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Path(`/ping`)
+      kind: Rule
+      priority: 100           # maior prioridade — responde antes de qualquer regra
+      services:
+        - name: api@internal  # serviço interno do Traefik (não precisa de namespace)
+          kind: TraefikService

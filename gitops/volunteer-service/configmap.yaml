@@ -1,0 +1,10 @@
+# ════════════════════════════════════════════════════════════════
+# DEPRECATED — este ConfigMap foi substituído pelo ExternalSecret.
+#
+# As variáveis "dynamodb-table" e "aws-region" agora são gerenciadas
+# pelo External Secrets Operator via AWS Secrets Manager.
+# Ver: gitops/volunteer-service/external-secret.yaml
+#
+# Este arquivo está vazio intencionalmente. O ArgoCD (prune: true)
+# removerá o ConfigMap "volunteer-service-config" do cluster.
+# ════════════════════════════════════════════════════════════════

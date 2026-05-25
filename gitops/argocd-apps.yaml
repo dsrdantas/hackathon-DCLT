@@ -1,0 +1,377 @@
+# ════════════════════════════════════════════════════════════════
+# gitops/argocd-apps.yaml
+#
+# AppProject + Applications do ArgoCD para o projeto SolidaryTech
+# Repositório monitorado: https://github.com/dsrdantas/hackathon-DCLT
+#
+# Aplicado automaticamente pelo Terraform (module.gitops null_resource).
+# Pode também ser aplicado manualmente:
+#   kubectl apply -f gitops/argocd-apps.yaml
+# ════════════════════════════════════════════════════════════════
+
+# ── AppProject: solidarytech ──────────────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: solidarytech
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.io
+spec:
+  description: "SolidaryTech — Plataforma de doações e voluntariado (TC5 Hackathon)"
+
+  sourceRepos:
+    - "https://github.com/dsrdantas/hackathon-DCLT"
+
+  destinations:
+    - namespace: ngo
+      server: https://kubernetes.default.svc
+    - namespace: donation
+      server: https://kubernetes.default.svc
+    - namespace: volunteer
+      server: https://kubernetes.default.svc
+    - namespace: traefik           # IngressRoutes e Middlewares centralizados
+      server: https://kubernetes.default.svc
+    - namespace: external-secrets  # ClusterSecretStore
+      server: https://kubernetes.default.svc
+    - namespace: monitoring        # Grafana dashboard ConfigMap
+      server: https://kubernetes.default.svc
+    - namespace: observability     # ServiceMonitors OTel Collector
+      server: https://kubernetes.default.svc
+
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: "external-secrets.io"
+      kind: ClusterSecretStore
+
+  namespaceResourceWhitelist:
+    - group: "apps"
+      kind: Deployment
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Secret
+    - group: ""
+      kind: ServiceAccount
+    - group: "autoscaling"
+      kind: HorizontalPodAutoscaler
+    - group: "traefik.io"
+      kind: IngressRoute
+    - group: "traefik.io"
+      kind: Middleware
+    - group: "external-secrets.io"
+      kind: ExternalSecret
+    - group: "monitoring.coreos.com"
+      kind: ServiceMonitor
+    - group: "monitoring.coreos.com"
+      kind: PodMonitor
+    - group: "monitoring.coreos.com"
+      kind: PrometheusRule
+
+  roles:
+    - name: ci-deployer
+      description: "Role usada pelo GitHub Actions para sync manual"
+      policies:
+        - p, proj:solidarytech:ci-deployer, applications, sync, solidarytech/*, allow
+        - p, proj:solidarytech:ci-deployer, applications, get, solidarytech/*, allow
+
+---
+# ── Application: traefik-routes ───────────────────────────────
+# Gerencia IngressRoutes e Middlewares centralizados no namespace traefik.
+# Sincronizado na wave -1 para as rotas existirem antes dos microserviços.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik-routes
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.io
+  labels:
+    project: solidarytech
+    service: traefik
+    tier: platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: solidarytech
+
+  source:
+    repoURL: https://github.com/dsrdantas/hackathon-DCLT
+    targetRevision: main
+    path: gitops/traefik
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: traefik     # mesmo namespace do Ingress Controller
+
+  syncPolicy:
+    automated:
+      prune: true          # remove IngressRoutes/Middlewares obsoletos do cluster
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=false   # namespace já existe (criado pelo Helm do Traefik)
+      - PrunePropagationPolicy=foreground
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+
+  revisionHistoryLimit: 3
+
+---
+# ── Application: external-secrets-config ─────────────────────
+# Gerencia o ClusterSecretStore que aponta para o AWS Secrets Manager.
+# Deve ser sincronizado ANTES das Applications dos microserviços.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-secrets-config
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.io
+  labels:
+    project: solidarytech
+    service: external-secrets
+    tier: platform
+  annotations:
+    # Garante que este app é sincronizado na wave 0 (antes dos microserviços)
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: solidarytech
+
+  source:
+    repoURL: https://github.com/dsrdantas/hackathon-DCLT
+    targetRevision: main
+    path: gitops/external-secrets
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: external-secrets
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+
+  revisionHistoryLimit: 3
+
+---
+# ── Application: ngo-service ──────────────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ngo-service
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.io
+  labels:
+    project: solidarytech
+    service: ngo-service
+    tier: backend
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: solidarytech
+
+  source:
+    repoURL: https://github.com/dsrdantas/hackathon-DCLT
+    targetRevision: main
+    path: gitops/ngo-service
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ngo
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  revisionHistoryLimit: 3
+
+  info:
+    - name: "Porta"
+      value: "8081"
+    - name: "Tecnologia"
+      value: "Python / Flask"
+
+---
+# ── Application: donation-service ────────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: donation-service
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.io
+  labels:
+    project: solidarytech
+    service: donation-service
+    tier: backend
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: solidarytech
+
+  source:
+    repoURL: https://github.com/dsrdantas/hackathon-DCLT
+    targetRevision: main
+    path: gitops/donation-service
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: donation
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  revisionHistoryLimit: 3
+
+  info:
+    - name: "Porta"
+      value: "8082"
+    - name: "Tecnologia"
+      value: "Go"
+
+---
+# ── Application: volunteer-service ───────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: volunteer-service
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.io
+  labels:
+    project: solidarytech
+    service: volunteer-service
+    tier: backend
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: solidarytech
+
+  source:
+    repoURL: https://github.com/dsrdantas/hackathon-DCLT
+    targetRevision: main
+    path: gitops/volunteer-service
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: volunteer
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  revisionHistoryLimit: 3
+
+  info:
+    - name: "Porta"
+      value: "8083"
+    - name: "Tecnologia"
+      value: "Python / Flask"
+
+---
+# ── Application: observability ────────────────────────────────
+# Gerencia ServiceMonitors e o Grafana dashboard ConfigMap.
+# Wave -1: os monitores devem existir antes dos microserviços para
+# que o Prometheus comece a coletar métricas desde o primeiro deploy.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observability
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.io
+  labels:
+    project: solidarytech
+    tier: platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: solidarytech
+
+  source:
+    repoURL: https://github.com/dsrdantas/hackathon-DCLT
+    targetRevision: main
+    path: gitops/observability
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability   # namespace padrão (ServiceMonitors do OTel Collector)
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=false   # namespace criado pelo Terraform (Helm do OTel Collector)
+      - PrunePropagationPolicy=foreground
+      # ServerSideApply evita conflitos de field ownership nos CRDs do Prometheus Operator
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+
+  revisionHistoryLimit: 3
+
+  info:
+    - name: "Componentes"
+      value: "ServiceMonitors + Grafana Dashboard"
