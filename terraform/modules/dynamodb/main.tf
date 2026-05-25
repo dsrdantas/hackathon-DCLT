@@ -35,31 +35,5 @@ resource "aws_dynamodb_table" "volunteers" {
 
   tags = { Name = var.table_name, Tier = "data", Service = "dynamodb-volunteers" }
 }
-
-# ── IAM Policy — nós EKS acessam a tabela ────────────────────
-resource "aws_iam_role_policy" "dynamodb_access" {
-  name = "${local.name_prefix}-dynamodb-volunteers"
-  # Extrai o nome da role do ARN
-  role = element(split("/", var.eks_node_role_arn), length(split("/", var.eks_node_role_arn)) - 1)
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "dynamodb:PutItem",
-          "dynamodb:GetItem",
-          "dynamodb:UpdateItem",
-          "dynamodb:DeleteItem",
-          "dynamodb:Scan",
-          "dynamodb:Query"
-        ]
-        Resource = [
-          aws_dynamodb_table.volunteers.arn,
-          "${aws_dynamodb_table.volunteers.arn}/index/*"
-        ]
-      }
-    ]
-  })
-}
+# Nota: aws_iam_role_policy omitido — AWS Academy LabRole ja possui
+# acesso a DynamoDB e nao permite iam:PutRolePolicy em roles externos.

@@ -95,10 +95,9 @@ module "sqs" {
 module "dynamodb" {
   source = "./modules/dynamodb"
 
-  project_name      = var.project_name
-  environment       = var.environment
-  table_name        = var.dynamodb_table_name
-  eks_node_role_arn = module.eks.node_role_arn
+  project_name = var.project_name
+  environment  = var.environment
+  table_name   = var.dynamodb_table_name
 }
 
 # ── Secrets Manager + IAM role ESO (IRSA) ────────────────────

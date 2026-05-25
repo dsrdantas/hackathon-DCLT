@@ -3,79 +3,17 @@ locals {
 }
 
 # ════════════════════════════════════════════════════════════════
-# IAM — Cluster Role
+# IAM — AWS Academy LabRole (pre-existente)
+#
+# ⚠️  AWS Academy LabRole NÃO permite iam:CreateRole nem iam:CreatePolicy.
+#     Usamos o LabRole pré-provisionado como cluster role E node role.
+#     O LabRole já possui todas as políticas necessárias:
+#       AmazonEKSClusterPolicy, AmazonEKSWorkerNodePolicy,
+#       AmazonEKS_CNI_Policy, AmazonEC2ContainerRegistryReadOnly,
+#       AmazonSSMManagedInstanceCore, acesso a SQS e DynamoDB.
 # ════════════════════════════════════════════════════════════════
-resource "aws_iam_role" "cluster" {
-  name = "${local.cluster_name}-cluster-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "eks.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "cluster_policy" {
-  role       = aws_iam_role.cluster.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
-}
-
-# ════════════════════════════════════════════════════════════════
-# IAM — Node Role
-# ════════════════════════════════════════════════════════════════
-resource "aws_iam_role" "node" {
-  name = "${local.cluster_name}-node-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "ec2.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "node_worker" {
-  role       = aws_iam_role.node.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
-}
-resource "aws_iam_role_policy_attachment" "node_cni" {
-  role       = aws_iam_role.node.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
-}
-resource "aws_iam_role_policy_attachment" "node_ecr" {
-  role       = aws_iam_role.node.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-}
-resource "aws_iam_role_policy_attachment" "node_ssm" {
-  role       = aws_iam_role.node.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-}
-
-# ── Política inline: acesso ao SQS e DynamoDB pelos pods ─────
-resource "aws_iam_role_policy" "node_aws_services" {
-  name = "solidarytech-aws-services"
-  role = aws_iam_role.node.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["sqs:SendMessage", "sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
-        Resource = "*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:Scan", "dynamodb:Query"]
-        Resource = "*"
-      }
-    ]
-  })
+data "aws_iam_role" "lab_role" {
+  name = "LabRole"
 }
 
 # ════════════════════════════════════════════════════════════════
@@ -161,7 +99,7 @@ resource "aws_security_group_rule" "cluster_ingress_nodes" {
 #trivy:ignore:AVD-AWS-0041 # CIDR 0.0.0.0/0: IPs do GitHub Actions são dinâmicos; restringir via OIDC em produção real
 resource "aws_eks_cluster" "this" {
   name     = local.cluster_name
-  role_arn = aws_iam_role.cluster.arn
+  role_arn = data.aws_iam_role.lab_role.arn
   version  = var.eks_version
 
   vpc_config {
@@ -172,10 +110,6 @@ resource "aws_eks_cluster" "this" {
   }
 
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
-
-  depends_on = [
-    aws_iam_role_policy_attachment.cluster_policy
-  ]
 
   tags = { Name = local.cluster_name, Tier = "compute", Service = "eks-kubernetes" }
 }
@@ -205,7 +139,7 @@ resource "aws_eks_addon" "kube_proxy" {
 resource "aws_eks_node_group" "this" {
   cluster_name    = aws_eks_cluster.this.name
   node_group_name = "${local.cluster_name}-nodes"
-  node_role_arn   = aws_iam_role.node.arn
+  node_role_arn   = data.aws_iam_role.lab_role.arn
   subnet_ids      = var.subnet_ids
 
   instance_types = [var.eks_node_instance_type]
@@ -224,12 +158,6 @@ resource "aws_eks_node_group" "this" {
     id      = aws_launch_template.nodes.id
     version = aws_launch_template.nodes.latest_version
   }
-
-  depends_on = [
-    aws_iam_role_policy_attachment.node_worker,
-    aws_iam_role_policy_attachment.node_cni,
-    aws_iam_role_policy_attachment.node_ecr,
-  ]
 
   tags = {
     Name    = "${local.cluster_name}-nodes"
