@@ -8,7 +8,7 @@ locals {
 #trivy:ignore:AVD-AWS-0104 # ElastiCache SG: egress amplo necessário para respostas TCP; restringir ao VPC CIDR em produção real
 resource "aws_security_group" "elasticache" {
   name        = "${local.name_prefix}-elasticache-sg"
-  description = "ElastiCache Redis — acesso restrito aos nós EKS"
+  description = "ElastiCache Redis - acesso restrito aos nos EKS"
   vpc_id      = var.vpc_id
 
   ingress {

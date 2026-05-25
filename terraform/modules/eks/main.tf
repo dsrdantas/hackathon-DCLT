@@ -84,7 +84,7 @@ resource "aws_iam_role_policy" "node_aws_services" {
 #trivy:ignore:AVD-AWS-0104 # EKS control-plane SG: egress to internet necessário para acesso ao ECR e APIs AWS
 resource "aws_security_group" "cluster" {
   name        = "${local.cluster_name}-cluster-sg"
-  description = "Control plane EKS — comunicacao com nós"
+  description = "Control plane EKS - comunicacao com nos"
   vpc_id      = var.vpc_id
 
   egress {
@@ -92,7 +92,7 @@ resource "aws_security_group" "cluster" {
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow all outbound — required for ECR pull and AWS API access"
+    description = "Allow all outbound - required for ECR pull and AWS API access"
   }
 
   tags = { Name = "${local.cluster_name}-cluster-sg" }
@@ -101,7 +101,7 @@ resource "aws_security_group" "cluster" {
 #trivy:ignore:AVD-AWS-0104 # Node SG: egress a internet necessário para ECR pull, AWS API e atualização de sistema
 resource "aws_security_group" "nodes" {
   name        = "${local.cluster_name}-nodes-sg"
-  description = "Nós do EKS — comunicacao interna e com control plane"
+  description = "Nos do EKS - comunicacao interna e com control plane"
   vpc_id      = var.vpc_id
 
   # Comunicação intra-cluster

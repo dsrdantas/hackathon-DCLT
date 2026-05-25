@@ -10,7 +10,7 @@ locals {
 # ════════════════════════════════════════════════════════════════
 resource "aws_security_group" "rds" {
   name        = "${local.name_prefix}-rds-sg"
-  description = "RDS PostgreSQL ${var.service_name} — acesso restrito aos nós EKS"
+  description = "RDS PostgreSQL ${var.service_name} - acesso restrito aos nos EKS"
   vpc_id      = var.vpc_id
 
   ingress {
@@ -18,7 +18,7 @@ resource "aws_security_group" "rds" {
     to_port         = 5432
     protocol        = "tcp"
     security_groups = [var.eks_sg_id]
-    description     = "PostgreSQL from EKS nodes → ${var.service_name}-service"
+    description     = "PostgreSQL from EKS nodes - ${var.service_name}-service"
   }
 
   egress {
@@ -57,7 +57,7 @@ resource "aws_db_subnet_group" "this" {
 resource "aws_db_parameter_group" "this" {
   name        = "${local.name_prefix}-pg16"
   family      = "postgres16"
-  description = "PostgreSQL 16 — ${var.service_name}-service"
+  description = "PostgreSQL 16 - ${var.service_name}-service"
 
   parameter {
     name  = "log_connections"
