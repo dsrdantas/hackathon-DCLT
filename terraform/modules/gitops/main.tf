@@ -78,9 +78,11 @@ resource "helm_release" "argocd" {
         type: ClusterIP
       extraArgs:
         - --insecure
+        - --rootpath=/argocd
     configs:
       params:
         server.insecure: "true"
+        server.rootpath: "/argocd"
     global:
       networkPolicy:
         create: false
@@ -126,9 +128,16 @@ resource "helm_release" "traefik" {
     providers:
       kubernetesCRD:
         enabled: true
-        allowCrossNamespace: true
+        allowCrossNamespace: true   # permite IngressRoute referenciar servicos em outros namespaces
       kubernetesIngress:
         enabled: true
+    # Ping endpoint — usado pelo NLB health-check em /ping
+    ping:
+      entryPoint: "web"
+    # API interna desabilitada (sem dashboard exposto)
+    api:
+      dashboard: false
+      insecure: false
     logs:
       access:
         enabled: true
@@ -269,11 +278,13 @@ resource "helm_release" "kube_prometheus_stack" {
         limits:   { cpu: 200m, memory: 256Mi }
     prometheus:
       prometheusSpec:
+        # Serve a UI em /prometheus (--web.route-prefix)
+        routePrefix: /prometheus
         retention: 7d
         resources:
           requests: { cpu: 200m, memory: 512Mi }
           limits:   { cpu: 500m, memory: 1Gi }
-        # Descobre todos os ServiceMonitors do cluster (não só os do Helm)
+        # Descobre todos os ServiceMonitors do cluster (nao so os do Helm)
         serviceMonitorSelectorNilUsesHelmValues: false
         podMonitorSelectorNilUsesHelmValues: false
         serviceMonitorNamespaceSelector:
@@ -281,6 +292,11 @@ resource "helm_release" "kube_prometheus_stack" {
     grafana:
       enabled: true
       adminPassword: "${var.project_name}-grafana"
+      # Serve a UI em /grafana — Traefik passa o path inteiro, Grafana trata
+      grafana.ini:
+        server:
+          root_url: "%(protocol)s://%(domain)s/grafana/"
+          serve_from_sub_path: true
       resources:
         requests: { cpu: 100m, memory: 128Mi }
         limits:   { cpu: 200m, memory: 256Mi }
