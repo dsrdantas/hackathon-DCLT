@@ -164,6 +164,9 @@ jobs:
           echo "uri=${URI}" >> $GITHUB_OUTPUT
           echo "📦 Imagem: ${URI}:${TAG}"
 
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build e Push imagem Docker (amd64)
         uses: docker/build-push-action@v5
         with:
