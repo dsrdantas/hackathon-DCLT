@@ -124,9 +124,13 @@ resource "aws_route_table_association" "elasticache" {
   route_table_id = aws_route_table.private.id
 }
 
-# ── VPC Endpoints gratuitos (gateway) ────────────────────────
+# ════════════════════════════════════════════════════════════════
+# VPC Endpoints
+# ════════════════════════════════════════════════════════════════
 data "aws_region" "current" {}
 
+# ── Gateway Endpoints (sem custo por hora) ────────────────────
+# Adicionam rotas diretas nas route tables; não usam DNS privado.
 resource "aws_vpc_endpoint" "dynamodb" {
   vpc_id            = aws_vpc.this.id
   service_name      = "com.amazonaws.${data.aws_region.current.name}.dynamodb"
@@ -139,8 +143,65 @@ resource "aws_vpc_endpoint" "s3" {
   vpc_id            = aws_vpc.this.id
   service_name      = "com.amazonaws.${data.aws_region.current.name}.s3"
   vpc_endpoint_type = "Gateway"
-  route_table_ids   = [aws_route_table.private.id]
+  route_table_ids   = [aws_route_table.private.id, aws_route_table.public.id]
   tags              = { Name = "${local.name_prefix}-vpce-s3" }
+}
+
+# ── Interface Endpoints (ENI privada nas subnets EKS) ─────────
+# Permite que os nos EKS chamem EC2, ECR, EKS e STS diretamente
+# pela rede privada AWS, sem depender do NAT Gateway.
+#
+# Requisito: enable_dns_support + enable_dns_hostnames habilitados
+# na VPC (ambos ja estao ativos acima).
+#
+# Custo: ~$0.01/hora por endpoint por AZ + $0.01/GB dados.
+# ═══════════════════════════════════════════════════════════════
+
+# Security Group para as ENIs dos Interface Endpoints.
+# Permite apenas HTTPS de dentro da VPC (stateful — respostas automaticas).
+#trivy:ignore:AVD-AWS-0104 # VPCE SG: sem egress explicito = default all-outbound; stateful, respostas sao automaticas
+resource "aws_security_group" "vpce" {
+  name        = "${local.name_prefix}-vpce-sg"
+  description = "HTTPS from VPC CIDR to Interface Endpoints"
+  vpc_id      = aws_vpc.this.id
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+    description = "HTTPS from VPC CIDR"
+  }
+
+  tags = { Name = "${local.name_prefix}-vpce-sg" }
+}
+
+# Mapa: chave do recurso Terraform → sufixo do service name AWS
+locals {
+  interface_endpoints = {
+    "ec2"      = "ec2"       # EC2/DescribeInstances — bootstrap do nodeadm
+    "eks"      = "eks"       # EKS API server — comunicacao kubelet/control-plane
+    "eks-auth" = "eks-auth"  # EKS authentication — node join token
+    "sts"      = "sts"       # IAM role assumption (LabRole)
+    "ecr-api"  = "ecr.api"   # ECR API — manifest pull
+    "ecr-dkr"  = "ecr.dkr"  # ECR Docker — layer pull (complementa S3 Gateway)
+  }
+}
+
+# Um Interface Endpoint por servico, provisionado nas subnets EKS (2 AZs).
+# private_dns_enabled = true: sobrescreve a resolucao DNS publica com
+# o IP privado da ENI — os nos acessam a API sem sair da VPC.
+resource "aws_vpc_endpoint" "interface" {
+  for_each = local.interface_endpoints
+
+  vpc_id              = aws_vpc.this.id
+  service_name        = "com.amazonaws.${data.aws_region.current.name}.${each.value}"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = aws_subnet.eks[*].id
+  security_group_ids  = [aws_security_group.vpce.id]
+  private_dns_enabled = true
+
+  tags = { Name = "${local.name_prefix}-vpce-${each.key}" }
 }
 
 # ════════════════════════════════════════════════════════════════
